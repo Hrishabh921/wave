@@ -1,0 +1,33 @@
+# --- Virtual environment (recreate from requirements.txt, never commit this) ---
+wave_env/
+venv/
+.venv/
+
+# --- Secrets ---
+.env
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- Local data & logs (personal, per-machine — not source) ---
+database/wave_memory.db
+wave_system.log
+wave_settings.json
+
+# --- Bundled Tesseract OCR binaries (large binaries, not source code) ---
+*.exe
+*.dll
+tessdata/
+
+# --- Generated screenshots / webcam photos ---
+assets/*.png
+assets/*.jpg
+screenshots/*.png
+screenshots/*.jpg
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

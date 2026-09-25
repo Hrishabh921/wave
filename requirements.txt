@@ -1,0 +1,34 @@
+# Wave AI — Python dependencies
+# Tested with Python 3.11 on Windows.
+# Versions below are pulled from the project's own working venv, not guessed.
+
+# ── Core (the app will not start without these) ──────────────────────
+PyQt6==6.11.0
+groq==1.4.0
+SpeechRecognition==3.10.1
+PyAudio==0.2.14
+pygame==2.6.1
+edge-tts==7.2.8
+pywhatkit==5.4
+requests==2.34.2
+psutil==5.9.8
+pyautogui==0.9.54
+opencv-python==4.11.0.86
+pytesseract==0.3.10
+python-dotenv==1.0.1
+winsdk==1.0.0b10
+Markdown==3.10.3
+pypdf==6.19.0
+Pillow==12.2.0
+
+# ── Optional (feature degrades gracefully if one of these is missing —
+#    install all of them for the full feature set) ────────────────────
+pyperclip==1.11.0              # clipboard tool + Clipboard page
+pycaw==20251023                # real system volume control (else falls back to media keys)
+comtypes==1.4.16               # required by pycaw
+pywin32==312                   # offline SAPI voice fallback, browser registry lookup
+keyboard==0.13.5               # global hotkeys
+qtawesome==1.4.2               # icon set used across the UI
+Pygments==2.21.0               # code syntax highlighting in chat bubbles
+screen-brightness-control==0.27.2   # brightness slider
+duckduckgo-search==8.1.1       # get_live_information / ask_internet tool
