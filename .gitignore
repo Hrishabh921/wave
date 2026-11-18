@@ -12,13 +12,26 @@ __pycache__/
 
 # --- Local data & logs (personal, per-machine — not source) ---
 database/wave_memory.db
-wave_system.log
+# the log and its rotated copies (.1, .2) - they hold what you said to Wave
+wave_system.log*
 wave_settings.json
+database/trash/
+database/ttfa.jsonl*
+# the avatar: your photo, its frames, your voice sample and the rendered
+# lifelike clips (avatar_rig/live/, tens of MB)
+avatar_rig/
+data/unmatched_utterances.jsonl
+user_skills/*.py
+!user_skills/_example_skill.py
 
 # --- Bundled Tesseract OCR binaries (large binaries, not source code) ---
 *.exe
 *.dll
 tessdata/
+# --- Bundled Tesseract OCR documentation (its own man pages / README / LICENSE —
+#     not Wave's docs; committed by accident once) ---
+*.1.html
+*.5.html
 
 # --- Generated screenshots / webcam photos ---
 assets/*.png
@@ -31,3 +44,21 @@ screenshots/*.jpg
 Thumbs.db
 .vscode/
 .idea/
+
+# --- PyInstaller build output (docs/PACKAGING.md) - rebuild, don't commit ---
+build/
+dist/
+*.spec.bak
+# the shareable zip that clean_zip.py / make_clean_zip.bat builds
+wave_project_clean.zip
+# --- Downloaded Piper voices (~60 MB each; Wave fetches them itself) ---
+voice_models/*.onnx
+voice_models/*.onnx.json
+voice_models/piper/
+piper_voices/
+# --- Stray duplicate copies of config files ---
+.env ·*
+.gitignore ·*
+# --- Tier 11: openWakeWord's feature files, downloaded on first use (not ours
+#     to redistribute) - Wave's own voice_models/wakewords/hey_wave.onnx IS tracked ---
+voice_models/openwakeword/
