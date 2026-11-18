@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Pair with Wave</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap" style="justify-content:center;">
+  <div class="card">
+    <h1>Pair with Wave</h1>
+    <p class="sub">Scanning the QR code on your computer fills this in automatically. Otherwise, type the 8-character code shown next to it.</p>
+    <input id="token" type="text" autocomplete="off" autocapitalize="characters" placeholder="Pairing code" />
+    <div class="error" id="err"></div>
+    <button id="go">Pair this phone</button>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+<script>WaveDashboard.initLoginPage();</script>
+</body>
+</html>

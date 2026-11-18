@@ -1,0 +1,294 @@
+{"_defaults": {}}
+{"t": "undo that uh", "i": "undo_last_action", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:2 ('undo that'); router: miss"}
+{"t": "undo my last acton", "i": "undo_last_action", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:3 ('undo my last action'); router: miss"}
+{"t": "take back", "i": "undo_last_action", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:4 ('take that back'); router: miss"}
+{"t": "close uh this window", "i": "close_current_window", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:5 ('close this window'); router: miss"}
+{"t": "close all windows like", "i": "close_current_window", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:6 ('close all windows'); router: ok"}
+{"t": "close the uh tab", "i": "close_current_tab", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:7 ('close the tab'); router: miss"}
+{"t": "delete the screenshot screenshot", "i": "delete_latest_screenshot", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:8 ('delete the screenshot'); router: ok"}
+{"t": "take screenshot", "i": "take_screenshot", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:9 ('take a screenshot'); router: ok"}
+{"t": "capture scren", "i": "take_screenshot", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:10 ('capture screen'); router: miss"}
+{"t": "what's on my my screen", "i": "read_screen_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:11 ('what's on my screen'); router: miss"}
+{"t": "read the scren for me", "i": "read_screen_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:12 ('read the screen for me'); router: miss"}
+{"t": "pc ifno", "i": "get_pc_info", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:13 ('pc info'); router: miss"}
+{"t": "how's my pc doig", "i": "get_pc_info", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:14 ('how's my pc doing'); router: ok"}
+{"t": "what's in my clipoard", "i": "get_clipboard", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:15 ('what's in my clipboard'); router: miss"}
+{"t": "lcok my pc", "i": "lock_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:16 ('lock my pc'); router: miss"}
+{"t": "lock screen", "i": "lock_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:17 ('lock the screen'); router: miss"}
+{"t": "pase", "i": "media_play_pause", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:18 ('pause'); router: miss"}
+{"t": "rseume", "i": "media_play_pause", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:19 ('resume'); router: miss"}
+{"t": "pause the musc", "i": "media_play_pause", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:20 ('pause the music'); router: miss"}
+{"t": "next song song", "i": "media_next_track", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:21 ('next song'); router: ok"}
+{"t": "skip skip this song", "i": "media_next_track", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:22 ('skip this song'); router: ok"}
+{"t": "previous song song", "i": "media_previous_track", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:23 ('previous song'); router: ok"}
+{"t": "go bcak a song", "i": "media_previous_track", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:24 ('go back a song'); router: miss"}
+{"t": "volue up", "i": "volume_up", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:25 ('volume up'); router: miss"}
+{"t": "turn up up the volume", "i": "volume_up", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:26 ('turn up the volume'); router: miss"}
+{"t": "luoder", "i": "volume_up", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:27 ('louder'); router: miss"}
+{"t": "volume down uh", "i": "volume_down", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:28 ('volume down'); router: ok"}
+{"t": "quieter please please", "i": "volume_down", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:29 ('quieter please'); router: ok"}
+{"t": "mute mute", "i": "mute_volume", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:30 ('mute'); router: miss"}
+{"t": "unmute unmute", "i": "unmute_volume", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:31 ('unmute'); router: miss"}
+{"t": "mute the the sound", "i": "mute_volume", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:32 ('mute the sound'); router: miss"}
+{"t": "turn on wfii", "i": "toggle_hardware", "l": "en", "s": "noisy_stt", "a": {"instruction": "turn on wifi"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:33 ('turn on wifi'); router: miss"}
+{"t": "turn off bleutooth", "i": "toggle_hardware", "l": "en", "s": "noisy_stt", "a": {"instruction": "turn off bluetooth"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:34 ('turn off bluetooth'); router: miss"}
+{"t": "switch on the uh hotspot", "i": "toggle_hardware", "l": "en", "s": "noisy_stt", "a": {"instruction": "switch on the hotspot"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:35 ('switch on the hotspot'); router: ok"}
+{"t": "open uh spotify", "i": "open_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "spotify"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:36 ('open spotify'); router: ok"}
+{"t": "launh notepad", "i": "open_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "notepad"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:37 ('launch notepad'); router: miss"}
+{"t": "start calculaotr", "i": "open_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "calculator"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:38 ('start calculator'); router: ok"}
+{"t": "close notepad uh", "i": "close_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "notepad"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:39 ('close notepad'); router: ok"}
+{"t": "close crhome", "i": "close_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "chrome"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:40 ('close chrome'); router: ok"}
+{"t": "play lofi like beats", "i": "play_youtube", "l": "en", "s": "noisy_stt", "a": {"query": "lofi beats"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:41 ('play lofi beats'); router: ok"}
+{"t": "play some jazz jazz", "i": "play_youtube", "l": "en", "s": "noisy_stt", "a": {"query": "some jazz"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:42 ('play some jazz'); router: ok"}
+{"t": "search for best pizza uh near me", "i": "search_google", "l": "en", "s": "noisy_stt", "a": {"query": "best pizza near me"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:43 ('search for best pizza near me'); router: ok"}
+{"t": "search for like lofi beats on youtube", "i": "play_youtube", "l": "en", "s": "noisy_stt", "a": {"query": "lofi beats"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:44 ('search for lofi beats on youtube'); router: ok"}
+{"t": "create a folder called Taexs", "i": "create_folder", "l": "en", "s": "noisy_stt", "a": {"folder_name": "taxes"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:45 ('create a folder called Taxes'); router: ok"}
+{"t": "make a a folder named Trip Photos", "i": "create_folder", "l": "en", "s": "noisy_stt", "a": {"folder_name": "trip photos"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:46 ('make a folder named Trip Photos'); router: miss"}
+{"t": "remind me call mom at 5pm", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:47 ('remind me to call mom at 5pm'); router: miss"}
+{"t": "what's the weather in jaipur jaipur today", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:48 ('what's the weather in jaipur today'); router: miss"}
+{"t": "send a whatsapp message to raj saying I'm running running late", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:49 ('send a whatsapp message to raj saying I'm running late'); router: miss"}
+{"t": "what's 2 plus plus 2", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:50 ('what's 2 plus 2'); router: miss"}
+{"t": "create a calendar event for my my dentist appointment tomorrow", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:51 ('create a calendar event for my dentist appointment tomorrow'); router: miss"}
+{"t": "open the the file from last week's meeting notes please", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:52 ('open the file from last week's meeting notes please'); router: miss"}
+{"t": "close enoguh", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:53 ('close enough'); router: miss"}
+{"t": "play devil's advocate for a second second", "i": "chat", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:54 ('play devil's advocate for a second'); router: miss"}
+{"t": "open dislpay settings", "i": "open_system_setting", "l": "en", "s": "noisy_stt", "a": {"setting": "display"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:55 ('open display settings'); router: miss"}
+{"t": "open the the wi-fi settings", "i": "open_system_setting", "l": "en", "s": "noisy_stt", "a": {"setting": "wifi"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:56 ('open the wi-fi settings'); router: ok"}
+{"t": "open um settings", "i": "open_system_setting", "l": "en", "s": "noisy_stt", "a": {"setting": "settings"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:57 ('open settings'); router: miss"}
+{"t": "open crhome settings", "i": "open_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "chrome settings"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:58 ('open chrome settings'); router: ok"}
+{"t": "write buy milk today notepad", "i": "write_notepad", "l": "en", "s": "noisy_stt", "a": {"text": "buy milk today"}, "n": "noisy-stt word_drop of golden/intents_en.jsonl:59 ('write buy milk today in notepad'); router: miss"}
+{"t": "type hello uh world into notepad", "i": "write_notepad", "l": "en", "s": "noisy_stt", "a": {"text": "hello world"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:60 ('type hello world into notepad'); router: ok"}
+{"t": "kill crome", "i": "close_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "chrome"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:61 ('kill chrome'); router: ok"}
+{"t": "disable bluetooth uh", "i": "toggle_hardware", "l": "en", "s": "noisy_stt", "a": {"instruction": "disable bluetooth"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:62 ('disable bluetooth'); router: ok"}
+{"t": "shut down the the pc", "i": "shutdown_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:63 ('shut down the pc'); router: miss"}
+{"t": "restart pc", "i": "restart_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:64 ('restart the pc'); router: miss"}
+{"t": "put the like pc to sleep", "i": "sleep_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:65 ('put the pc to sleep'); router: miss"}
+{"t": "hibernte the pc", "i": "hibernate_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:66 ('hibernate the pc'); router: miss"}
+{"t": "log off pc", "i": "log_off", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:67 ('log off the pc'); router: miss"}
+{"t": "cancel shtudown", "i": "cancel_shutdown", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:68 ('cancel shutdown'); router: miss"}
+{"t": "show desktop", "i": "show_desktop", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:69 ('show the desktop'); router: ok"}
+{"t": "switch windw", "i": "switch_window", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:70 ('switch window'); router: miss"}
+{"t": "cpoy that", "i": "copy_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:71 ('copy that'); router: miss"}
+{"t": "paste this this", "i": "paste_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:72 ('paste this'); router: ok"}
+{"t": "select all all", "i": "select_all_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:73 ('select all'); router: ok"}
+{"t": "pess undo", "i": "undo_keystroke", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:74 ('press undo'); router: miss"}
+{"t": "redo redo that", "i": "redo_keystroke", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:75 ('redo that'); router: ok"}
+{"t": "perss enter", "i": "press_key", "l": "en", "s": "noisy_stt", "a": {"key_combo": "enter"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:76 ('press enter'); router: miss"}
+{"t": "hit escape escape", "i": "press_key", "l": "en", "s": "noisy_stt", "a": {"key_combo": "escape"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:77 ('hit escape'); router: ok"}
+{"t": "prses tab", "i": "press_key", "l": "en", "s": "noisy_stt", "a": {"key_combo": "tab"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:78 ('press tab'); router: miss"}
+{"t": "new tab uh", "i": "new_tab", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:79 ('new tab'); router: ok"}
+{"t": "next tab uh", "i": "next_tab", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:80 ('next tab'); router: ok"}
+{"t": "pevious tab", "i": "previous_tab", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:81 ('previous tab'); router: miss"}
+{"t": "reload the the page", "i": "reload_page", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:82 ('reload the page'); router: miss"}
+{"t": "zoom zoom in", "i": "zoom_in", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:83 ('zoom in'); router: ok"}
+{"t": "zoom out out", "i": "zoom_out", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:84 ('zoom out'); router: ok"}
+{"t": "reet zoom", "i": "zoom_reset", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:85 ('reset zoom'); router: miss"}
+{"t": "scroll scroll up", "i": "scroll_up", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:86 ('scroll up'); router: ok"}
+{"t": "scrll down", "i": "scroll_down", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:87 ('scroll down'); router: miss"}
+{"t": "scrlol to the top", "i": "scroll_to_top", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:88 ('scroll to the top'); router: miss"}
+{"t": "scroll scroll to the bottom", "i": "scroll_to_bottom", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:89 ('scroll to the bottom'); router: ok"}
+{"t": "open downloads like", "i": "open_downloads", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:90 ('open downloads'); router: ok"}
+{"t": "open dcouments", "i": "open_documents", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:91 ('open documents'); router: miss"}
+{"t": "open pictues", "i": "open_pictures", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:92 ('open pictures'); router: miss"}
+{"t": "open muic", "i": "open_music", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:93 ('open music'); router: miss"}
+{"t": "open videos uh", "i": "open_videos", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:94 ('open videos'); router: ok"}
+{"t": "open this pc pc", "i": "open_this_pc", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:95 ('open this pc'); router: ok"}
+{"t": "open the rceycle bin", "i": "open_recycle_bin", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:96 ('open the recycle bin'); router: miss"}
+{"t": "open tsak manager", "i": "open_task_manager", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:97 ('open task manager'); router: miss"}
+{"t": "open conrtol panel", "i": "open_control_panel", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:98 ('open control panel'); router: miss"}
+{"t": "empty the recycle bin um", "i": "empty_recycle_bin", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:99 ('empty the recycle bin'); router: ok"}
+{"t": "set the clipboard too hello", "i": "set_clipboard", "l": "en", "s": "noisy_stt", "n": "noisy-stt phonetic_substitute of golden/intents_en.jsonl:100 ('set the clipboard to hello'); router: miss"}
+{"t": "type like hello world", "i": "type_text", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:101 ('type hello world'); router: ok"}
+{"t": "watch for a downlod", "i": "watch_for_download", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:102 ('watch for a download'); router: miss"}
+{"t": "let let me know when my download finishes", "i": "watch_for_download", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:103 ('let me know when my download finishes'); router: ok"}
+{"t": "cancel the download wath", "i": "cancel_download_watch", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:104 ('cancel the download watch'); router: miss"}
+{"t": "waht time is it", "i": "get_current_time", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:105 ('what time is it'); router: miss"}
+{"t": "tlel me the time", "i": "get_current_time", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:106 ('tell me the time'); router: miss"}
+{"t": "what's the um date today", "i": "get_current_date", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:107 ('what's the date today'); router: miss"}
+{"t": "what day is it tdoay", "i": "get_current_date", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:108 ('what day is it today'); router: miss"}
+{"t": "what time is it rght now", "i": "get_current_time", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:109 ('what time is it right now'); router: ok"}
+{"t": "tell me a joke joke", "i": "get_joke", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:110 ('tell me a joke'); router: ok"}
+{"t": "brightnss up", "i": "brightness_up", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:111 ('brightness up'); router: miss"}
+{"t": "brightness dwon", "i": "brightness_down", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:112 ('brightness down'); router: miss"}
+{"t": "full full brightness", "i": "brightness_max", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:113 ('full brightness'); router: ok"}
+{"t": "mnimum brightness", "i": "brightness_min", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:114 ('minimum brightness'); router: miss"}
+{"t": "vlume max", "i": "volume_max", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:115 ('volume max'); router: miss"}
+{"t": "vlume min", "i": "volume_min", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:116 ('volume min'); router: miss"}
+{"t": "battry status", "i": "get_battery_status", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:117 ('battery status'); router: miss"}
+{"t": "brightness status status", "i": "get_brightness_status", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:118 ('brightness status'); router: ok"}
+{"t": "cpu tempreature", "i": "get_cpu_temperature", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:119 ('cpu temperature'); router: ok"}
+{"t": "disk like usage", "i": "get_disk_usage", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:120 ('disk usage'); router: miss"}
+{"t": "gpu staus", "i": "get_gpu_status", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:121 ('gpu status'); router: miss"}
+{"t": "whats my ip", "i": "get_local_ip", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:122 ('what's my ip'); router: ok"}
+{"t": "system upitme", "i": "get_uptime", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:123 ('system uptime'); router: miss"}
+{"t": "list servies", "i": "list_services", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:124 ('list services'); router: miss"}
+{"t": "what windws are open", "i": "list_open_windows", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:125 ('what windows are open'); router: miss"}
+{"t": "list my my skills", "i": "list_my_skills", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:126 ('list my skills'); router: miss"}
+{"t": "run a slef check", "i": "run_self_diagnostics", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:127 ('run a self check'); router: miss"}
+{"t": "gvie me my briefing", "i": "daily_briefing", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:128 ('give me my briefing'); router: miss"}
+{"t": "take a a photo", "i": "take_photo", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:129 ('take a photo'); router: miss"}
+{"t": "list reminders", "i": "list_reminders", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:130 ('list my reminders'); router: miss"}
+{"t": "list my uh timers", "i": "list_timers", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:131 ('list my timers'); router: miss"}
+{"t": "list my wrokflows", "i": "list_workflows", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:132 ('list my workflows'); router: miss"}
+{"t": "lap stopwatch", "i": "lap_stopwatch", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:133 ('lap the stopwatch'); router: miss"}
+{"t": "start the the stopwatch", "i": "start_stopwatch", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:134 ('start the stopwatch'); router: miss"}
+{"t": "stop stopwatch", "i": "stop_stopwatch", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:135 ('stop the stopwatch'); router: ok"}
+{"t": "stopwatch sattus", "i": "stopwatch_status", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:136 ('stopwatch status'); router: miss"}
+{"t": "what are um my notes", "i": "read_notes", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:137 ('what are my notes'); router: miss"}
+{"t": "clear all my notes notes", "i": "clear_notes", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:138 ('clear all my notes'); router: ok"}
+{"t": "reindex notes", "i": "reindex_notes", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:139 ('reindex my notes'); router: ok"}
+{"t": "turn off off study mode", "i": "disable_mode", "l": "en", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_en.jsonl:140 ('turn off study mode'); router: miss"}
+{"t": "what mode am i uh in", "i": "get_active_mode", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:141 ('what mode am i in'); router: miss"}
+{"t": "what's the weatehr", "i": "get_weather", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:142 ('what's the weather'); router: miss"}
+{"t": "what's news", "i": "get_news", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:143 ('what's the news'); router: miss"}
+{"t": "what's on calendar", "i": "list_calendar_events", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:144 ('what's on my calendar'); router: miss"}
+{"t": "list rceent actions", "i": "list_recent_actions", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:145 ('list recent actions'); router: miss"}
+{"t": "what's on to-do list", "i": "list_todos", "l": "en", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_en.jsonl:146 ('what's on my to-do list'); router: miss"}
+{"t": "top processes uh", "i": "get_top_processes", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:147 ('top processes'); router: miss"}
+{"t": "what's my streak um", "i": "get_streak_status", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:148 ('what's my streak'); router: miss"}
+{"t": "cancel the timr", "i": "cancel_timer", "l": "en", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:149 ('cancel the timer'); router: miss"}
+{"t": "check uh the timer", "i": "check_timer", "l": "en", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:150 ('check the timer'); router: miss"}
+{"t": "enable dnd dnd", "i": "enable_mode", "l": "en", "s": "noisy_stt", "a": {"name": "dnd"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:151 ('enable dnd'); router: miss"}
+{"t": "turn on study uh mode", "i": "enable_mode", "l": "en", "s": "noisy_stt", "a": {"name": "study"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:152 ('turn on study mode'); router: ok"}
+{"t": "gming mode on", "i": "enable_mode", "l": "en", "s": "noisy_stt", "a": {"name": "gaming"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:153 ('gaming mode on'); router: ok"}
+{"t": "play sahpe of you on spotify", "i": "play_on_spotify", "l": "en", "s": "noisy_stt", "a": {"query": "shape of you"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:154 ('play shape of you on spotify'); router: ok"}
+{"t": "quiz me on photosythesis", "i": "quiz_me_on", "l": "en", "s": "noisy_stt", "a": {"topic": "photosynthesis"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:155 ('quiz me on photosynthesis'); router: ok"}
+{"t": "summarize my notes the johnson project", "i": "summarize_my_notes", "l": "en", "s": "noisy_stt", "a": {"topic": "the johnson project"}, "n": "noisy-stt word_drop of golden/intents_en.jsonl:156 ('summarize my notes on the johnson project'); router: miss"}
+{"t": "restart uh chrome", "i": "restart_app", "l": "en", "s": "noisy_stt", "a": {"app_name": "chrome"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:157 ('restart chrome'); router: ok"}
+{"t": "start the the bluetooth service", "i": "start_service", "l": "en", "s": "noisy_stt", "a": {"service_name": "bluetooth"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:158 ('start the bluetooth service'); router: ok"}
+{"t": "stop uh the print spooler service", "i": "stop_service", "l": "en", "s": "noisy_stt", "a": {"service_name": "print spooler"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:159 ('stop the print spooler service'); router: ok"}
+{"t": "search um for file budget.xlsx", "i": "search_file", "l": "en", "s": "noisy_stt", "a": {"file_name": "budget.xlsx"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:160 ('search for file budget.xlsx'); router: miss"}
+{"t": "craete a file called notes.txt", "i": "create_file", "l": "en", "s": "noisy_stt", "a": {"file_name": "notes.txt"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:161 ('create a file called notes.txt'); router: miss"}
+{"t": "delete report.txt report.txt", "i": "delete_file", "l": "en", "s": "noisy_stt", "a": {"file_name": "report.txt"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:162 ('delete report.txt'); router: ok"}
+{"t": "recall my wifi wifi password", "i": "recall_memory", "l": "en", "s": "noisy_stt", "a": {"key": "wifi password"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:163 ('recall my wifi password'); router: ok"}
+{"t": "forget my old addess", "i": "forget_memory", "l": "en", "s": "noisy_stt", "a": {"key": "old address"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:164 ('forget my old address'); router: ok"}
+{"t": "reset my meditation strek", "i": "reset_streak", "l": "en", "s": "noisy_stt", "a": {"habit": "meditation"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:165 ('reset my meditation streak'); router: miss"}
+{"t": "run uh workflow morning setup", "i": "run_workflow", "l": "en", "s": "noisy_stt", "a": {"name": "morning setup"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:166 ('run workflow morning setup'); router: miss"}
+{"t": "mark buy milk as uh done", "i": "complete_todo", "l": "en", "s": "noisy_stt", "a": {"query": "buy milk"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:167 ('mark buy milk as done'); router: ok"}
+{"t": "delete by milk todo", "i": "delete_todo", "l": "en", "s": "noisy_stt", "a": {"query": "buy milk"}, "n": "noisy-stt phonetic_substitute of golden/intents_en.jsonl:168 ('delete buy milk todo'); router: ok"}
+{"t": "cancel the the oven reminder", "i": "cancel_reminder", "l": "en", "s": "noisy_stt", "a": {"query": "oven"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:169 ('cancel the oven reminder'); router: ok"}
+{"t": "cancel dentist appointment", "i": "cancel_calendar_event", "l": "en", "s": "noisy_stt", "a": {"query": "dentist"}, "n": "noisy-stt word_drop of golden/intents_en.jsonl:170 ('cancel the dentist appointment'); router: miss"}
+{"t": "take a ntoe: buy milk", "i": "take_note", "l": "en", "s": "noisy_stt", "a": {"content": "buy milk"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:171 ('take a note: buy milk'); router: miss"}
+{"t": "type hello world world", "i": "type_text", "l": "en", "s": "noisy_stt", "a": {"text": "hello world"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:172 ('type hello world'); router: ok"}
+{"t": "summarize https://example.com/article uh", "i": "summarize_page", "l": "en", "s": "noisy_stt", "a": {"url": "https://example.com/article"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:173 ('summarize https://example.com/article'); router: ok"}
+{"t": "search my notes for johnson project", "i": "search_my_notes", "l": "en", "s": "noisy_stt", "a": {"question": "the johnson project"}, "n": "noisy-stt word_drop of golden/intents_en.jsonl:174 ('search my notes for the johnson project'); router: ok"}
+{"t": "focus on chrome chrome", "i": "focus_window", "l": "en", "s": "noisy_stt", "a": {"window_name": "chrome"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:175 ('focus on chrome'); router: ok"}
+{"t": "maximize um chrome", "i": "maximize_window", "l": "en", "s": "noisy_stt", "a": {"window_name": "chrome"}, "n": "noisy-stt filler_insertion of golden/intents_en.jsonl:176 ('maximize chrome'); router: ok"}
+{"t": "minimize crhome", "i": "minimize_window", "l": "en", "s": "noisy_stt", "a": {"window_name": "chrome"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:177 ('minimize chrome'); router: ok"}
+{"t": "restore chrome chrome", "i": "restore_window", "l": "en", "s": "noisy_stt", "a": {"window_name": "chrome"}, "n": "noisy-stt doubled_word of golden/intents_en.jsonl:178 ('restore chrome'); router: ok"}
+{"t": "fullscreen chroe", "i": "set_fullscreen", "l": "en", "s": "noisy_stt", "a": {"window_name": "chrome"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:179 ('fullscreen chrome'); router: ok"}
+{"t": "set the clipboard to helo", "i": "set_clipboard", "l": "en", "s": "noisy_stt", "a": {"text": "hello"}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:180 ('set the clipboard to hello'); router: ok"}
+{"t": "calculate 2 puls 2", "i": "calculate", "l": "en", "s": "noisy_stt", "a": {"expression": "2 plus 2"}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:181 ('calculate 2 plus 2'); router: ok"}
+{"t": "set the vloume to 50", "i": "set_volume", "l": "en", "s": "noisy_stt", "a": {"percent": 50}, "n": "noisy-stt typo_swap_letters of golden/intents_en.jsonl:182 ('set the volume to 50'); router: miss"}
+{"t": "set the brighness to 30", "i": "set_brightness", "l": "en", "s": "noisy_stt", "a": {"percent": 30}, "n": "noisy-stt typo_drop_letter of golden/intents_en.jsonl:183 ('set the brightness to 30'); router: miss"}
+{"t": "आवाज़ बढ़ाओ um", "i": "volume_up", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:2 ('आवाज़ बढ़ाओ'); router: ok"}
+{"t": "आवाज़ कम करो um", "i": "volume_down", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:3 ('आवाज़ कम करो'); router: ok"}
+{"t": "मय्ूट करो", "i": "mute_volume", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:4 ('म्यूट करो'); router: miss"}
+{"t": "कंप्यूटर uh लॉक करो", "i": "lock_pc", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:5 ('कंप्यूटर लॉक करो'); router: miss"}
+{"t": "स्क्रीनशॉट स्क्रीनशॉट लो", "i": "take_screenshot", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:6 ('स्क्रीनशॉट लो'); router: ok"}
+{"t": "पिछा गाना", "i": "media_previous_track", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:7 ('पिछला गाना'); router: miss"}
+{"t": "यह यह पूर्ववत करो", "i": "undo_last_action", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:8 ('यह पूर्ववत करो'); router: miss"}
+{"t": "क्रोम खोलो like", "i": "open_app", "l": "hi", "s": "noisy_stt", "a": {"app_name": "क्रोम"}, "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:9 ('क्रोम खोलो'); router: miss"}
+{"t": "नोटपैड नोटपैड बंद करो", "i": "close_app", "l": "hi", "s": "noisy_stt", "a": {"app_name": "नोटपैड"}, "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:10 ('नोटपैड बंद करो'); router: ok"}
+{"t": "मुझे कल सुबह याद दिलाना डॉकटर के पास जाना है", "i": "chat", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:11 ('मुझे कल सुबह याद दिलाना डॉक्टर के पास जाना है'); router: miss"}
+{"t": "आज जपुर में मौसम कैसा है", "i": "chat", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:12 ('आज जयपुर में मौसम कैसा है'); router: miss"}
+{"t": "पीसी लॉक मत करो करो", "i": "chat", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:13 ('पीसी लॉक मत करो'); router: miss"}
+{"t": "सेटिग्स खोलो", "i": "open_system_setting", "l": "hi", "s": "noisy_stt", "a": {"setting": "settings"}, "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:14 ('सेटिंग्स खोलो'); router: miss"}
+{"t": "नोटपड में दूध लाना लिखो", "i": "write_notepad", "l": "hi", "s": "noisy_stt", "a": {"text": "दूध लाना"}, "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:15 ('नोटपैड में दूध लाना लिखो'); router: miss"}
+{"t": "ब्लूटथ बंद करो", "i": "toggle_hardware", "l": "hi", "s": "noisy_stt", "a": {"instruction": "bluetooth बंद करो"}, "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:16 ('ब्लूटूथ बंद करो'); router: miss"}
+{"t": "पीसी पीसी शटडाउन करो", "i": "shutdown_pc", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:17 ('पीसी शटडाउन करो'); router: ok"}
+{"t": "पीसी रीस्टार्ट करो um", "i": "restart_pc", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:18 ('पीसी रीस्टार्ट करो'); router: ok"}
+{"t": "पीसी को सुाओ", "i": "sleep_pc", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:19 ('पीसी को सुलाओ'); router: miss"}
+{"t": "पीसी हइाबरनेट करो", "i": "hibernate_pc", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:20 ('पीसी हाइबरनेट करो'); router: miss"}
+{"t": "लॉग ऑफ ऑफ करो", "i": "log_off", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:21 ('लॉग ऑफ करो'); router: miss"}
+{"t": "शटडउान कैंसिल करो", "i": "cancel_shutdown", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:22 ('शटडाउन कैंसिल करो'); router: miss"}
+{"t": "डेस्कटॉप दिखाओ दिखाओ", "i": "show_desktop", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:23 ('डेस्कटॉप दिखाओ'); router: ok"}
+{"t": "वंिडो बदलो", "i": "switch_window", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:24 ('विंडो बदलो'); router: miss"}
+{"t": "इसे इसे कॉपी करो", "i": "copy_text", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:25 ('इसे कॉपी करो'); router: ok"}
+{"t": "इसे पसे्ट करो", "i": "paste_text", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:26 ('इसे पेस्ट करो'); router: miss"}
+{"t": "सब सेले्कट करो", "i": "select_all_text", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:27 ('सब सेलेक्ट करो'); router: miss"}
+{"t": "नया टैब खलोो", "i": "new_tab", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:28 ('नया टैब खोलो'); router: miss"}
+{"t": "अगला अगला टैब", "i": "next_tab", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:29 ('अगला टैब'); router: ok"}
+{"t": "पिछला uh टैब", "i": "previous_tab", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:30 ('पिछला टैब'); router: miss"}
+{"t": "पेज um रीलोड करो", "i": "reload_page", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:31 ('पेज रीलोड करो'); router: miss"}
+{"t": "ज़ूम इन um करो", "i": "zoom_in", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:32 ('ज़ूम इन करो'); router: miss"}
+{"t": "ज़ूम आउट आउट करो", "i": "zoom_out", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:33 ('ज़ूम आउट करो'); router: miss"}
+{"t": "ज़ूम रीसेट um करो", "i": "zoom_reset", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:34 ('ज़ूम रीसेट करो'); router: miss"}
+{"t": "ऊपर स्क्रॉल um करो", "i": "scroll_up", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:35 ('ऊपर स्क्रॉल करो'); router: miss"}
+{"t": "नीचे स्क्रल करो", "i": "scroll_down", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:36 ('नीचे स्क्रॉल करो'); router: miss"}
+{"t": "डाउनलोड्स खोलो खोलो", "i": "open_downloads", "l": "hi", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hi.jsonl:37 ('डाउनलोड्स खोलो'); router: ok"}
+{"t": "डॉक्यूमेंट्स uh खोलो", "i": "open_documents", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:38 ('डॉक्यूमेंट्स खोलो'); router: miss"}
+{"t": "रसीायकल बिन खोलो", "i": "open_recycle_bin", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:39 ('रीसायकल बिन खोलो'); router: miss"}
+{"t": "टास्क मैनजर खोलो", "i": "open_task_manager", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hi.jsonl:40 ('टास्क मैनेजर खोलो'); router: miss"}
+{"t": "कंट्ोरल पैनल खोलो", "i": "open_control_panel", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:41 ('कंट्रोल पैनल खोलो'); router: miss"}
+{"t": "रीसायकल बिन uh खाली करो", "i": "empty_recycle_bin", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:42 ('रीसायकल बिन खाली करो'); router: miss"}
+{"t": "क्या like समय हुआ है", "i": "get_current_time", "l": "hi", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hi.jsonl:43 ('क्या समय हुआ है'); router: miss"}
+{"t": "आज की ताीरख क्या है", "i": "get_current_date", "l": "hi", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hi.jsonl:44 ('आज की तारीख क्या है'); router: miss"}
+{"t": "undo kar", "i": "undo_last_action", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_hinglish.jsonl:2 ('undo kar do'); router: miss"}
+{"t": "wapas kar", "i": "undo_last_action", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_hinglish.jsonl:3 ('wapas kar do'); router: miss"}
+{"t": "screenshot le le lo", "i": "take_screenshot", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:4 ('screenshot le lo'); router: ok"}
+{"t": "sreenshot lo", "i": "take_screenshot", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:5 ('screenshot lo'); router: miss"}
+{"t": "pc lock kar kar do", "i": "lock_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:6 ('pc lock kar do'); router: miss"}
+{"t": "screen lock kar", "i": "lock_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_hinglish.jsonl:7 ('screen lock kar do'); router: miss"}
+{"t": "aawaz badhao", "i": "volume_up", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:8 ('awaaz badhao'); router: miss"}
+{"t": "volume badho thoda", "i": "volume_up", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:9 ('volume badhao thoda'); router: miss"}
+{"t": "awaaz tez krao", "i": "volume_up", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:10 ('awaaz tez karo'); router: miss"}
+{"t": "awaaz kam krao", "i": "volume_down", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:11 ('awaaz kam karo'); router: miss"}
+{"t": "volume kam karo like zara", "i": "volume_down", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:12 ('volume kam karo zara'); router: ok"}
+{"t": "awaaz like dheere karo", "i": "volume_down", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:13 ('awaaz dheere karo'); router: miss"}
+{"t": "mute kar", "i": "mute_volume", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt word_drop of golden/intents_hinglish.jsonl:14 ('mute kar do'); router: miss"}
+{"t": "awaaz um band karo", "i": "mute_volume", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:15 ('awaaz band karo'); router: miss"}
+{"t": "open spotify karo", "i": "open_app", "l": "hinglish", "s": "noisy_stt", "a": {"app_name": "spotify kardo"}, "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:16 ('open spotify kardo'); router: ok"}
+{"t": "close notepad plesae", "i": "close_app", "l": "hinglish", "s": "noisy_stt", "a": {"app_name": "notepad please"}, "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:17 ('close notepad please'); router: ok"}
+{"t": "pehle vloume badhao phir chrome khol do", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:18 ('pehle volume badhao phir chrome khol do'); router: miss"}
+{"t": "ntepad band karo uske baad ek reminder set karo", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:19 ('notepad band karo uske baad ek reminder set karo'); router: miss"}
+{"t": "pc lock mat krao", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:20 ('pc lock mat karo'); router: miss"}
+{"t": "awaaz badhao badhao mat", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:21 ('awaaz badhao mat'); router: miss"}
+{"t": "kya mujhe pc lock karna chahiye chahiye", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:22 ('kya mujhe pc lock karna chahiye'); router: miss"}
+{"t": "notepd band karo", "i": "close_app", "l": "hinglish", "s": "noisy_stt", "a": {"app_name": "notepad"}, "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:23 ('notepad band karo'); router: ok"}
+{"t": "chrome khol do um", "i": "open_app", "l": "hinglish", "s": "noisy_stt", "a": {"app_name": "chrome"}, "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:24 ('chrome khol do'); router: miss"}
+{"t": "spotify spotify kholo", "i": "open_app", "l": "hinglish", "s": "noisy_stt", "a": {"app_name": "spotify"}, "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:25 ('spotify kholo'); router: ok"}
+{"t": "reminder lagao ki kal uh doctor jana hai", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:26 ('reminder lagao ki kal doctor jana hai'); router: miss"}
+{"t": "mausam kaisa hai aaj jaipur mein um", "i": "chat", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:27 ('mausam kaisa hai aaj jaipur mein'); router: miss"}
+{"t": "display settings like kholo", "i": "open_system_setting", "l": "hinglish", "s": "noisy_stt", "a": {"setting": "display"}, "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:28 ('display settings kholo'); router: miss"}
+{"t": "notepad mien doodh lana likho", "i": "write_notepad", "l": "hinglish", "s": "noisy_stt", "a": {"text": "doodh lana"}, "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:29 ('notepad mein doodh lana likho'); router: miss"}
+{"t": "wifi band band karo", "i": "toggle_hardware", "l": "hinglish", "s": "noisy_stt", "a": {"instruction": "wifi band karo"}, "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:30 ('wifi band karo'); router: ok"}
+{"t": "pc shutdown karo karo", "i": "shutdown_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:31 ('pc shutdown karo'); router: ok"}
+{"t": "pc restart um karo", "i": "restart_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:32 ('pc restart karo'); router: miss"}
+{"t": "pc um ko sleep karo", "i": "sleep_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:33 ('pc ko sleep karo'); router: miss"}
+{"t": "pc hibernate krao", "i": "hibernate_pc", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:34 ('pc hibernate karo'); router: miss"}
+{"t": "pc se log off like karo", "i": "log_off", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:35 ('pc se log off karo'); router: miss"}
+{"t": "shutdown cancel karo karo", "i": "cancel_shutdown", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:36 ('shutdown cancel karo'); router: ok"}
+{"t": "desktop dikhao like", "i": "show_desktop", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:37 ('desktop dikhao'); router: ok"}
+{"t": "wndow badlo", "i": "switch_window", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:38 ('window badlo'); router: miss"}
+{"t": "ise copy copy karo", "i": "copy_text", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:39 ('ise copy karo'); router: miss"}
+{"t": "copy kar kar do", "i": "copy_text", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:40 ('copy kar do'); router: miss"}
+{"t": "ise psate karo", "i": "paste_text", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:41 ('ise paste karo'); router: miss"}
+{"t": "sab selct karo", "i": "select_all_text", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:42 ('sab select karo'); router: miss"}
+{"t": "naya tab tab kholo", "i": "new_tab", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:43 ('naya tab kholo'); router: miss"}
+{"t": "agla um tab", "i": "next_tab", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:44 ('agla tab'); router: miss"}
+{"t": "pihcla tab", "i": "previous_tab", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:45 ('pichla tab'); router: miss"}
+{"t": "page reload karo uh", "i": "reload_page", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:46 ('page reload karo'); router: ok"}
+{"t": "zoom in in karo", "i": "zoom_in", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:47 ('zoom in karo'); router: ok"}
+{"t": "zoom out out karo", "i": "zoom_out", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:48 ('zoom out karo'); router: ok"}
+{"t": "zoom reet karo", "i": "zoom_reset", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:49 ('zoom reset karo'); router: miss"}
+{"t": "upar scroll like karo", "i": "scroll_up", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:50 ('upar scroll karo'); router: miss"}
+{"t": "neeche scroll um karo", "i": "scroll_down", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:51 ('neeche scroll karo'); router: miss"}
+{"t": "sabse upar scrll karo", "i": "scroll_to_top", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:52 ('sabse upar scroll karo'); router: miss"}
+{"t": "sabse neehe scroll karo", "i": "scroll_to_bottom", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:53 ('sabse neeche scroll karo'); router: miss"}
+{"t": "downloads kholo um", "i": "open_downloads", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:54 ('downloads kholo'); router: ok"}
+{"t": "documnets kholo", "i": "open_documents", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:55 ('documents kholo'); router: miss"}
+{"t": "pictures pictures kholo", "i": "open_pictures", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:56 ('pictures kholo'); router: ok"}
+{"t": "music folder khloo", "i": "open_music", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:57 ('music folder kholo'); router: miss"}
+{"t": "videos uh kholo", "i": "open_videos", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:58 ('videos kholo'); router: miss"}
+{"t": "reyccle bin kholo", "i": "open_recycle_bin", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:59 ('recycle bin kholo'); router: miss"}
+{"t": "task manager kolo", "i": "open_task_manager", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:60 ('task manager kholo'); router: miss"}
+{"t": "control panel kohlo", "i": "open_control_panel", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_swap_letters of golden/intents_hinglish.jsonl:61 ('control panel kholo'); router: miss"}
+{"t": "recycle bin bin khali karo", "i": "empty_recycle_bin", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt doubled_word of golden/intents_hinglish.jsonl:62 ('recycle bin khali karo'); router: miss"}
+{"t": "trash khai karo", "i": "empty_recycle_bin", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:63 ('trash khali karo'); router: miss"}
+{"t": "kite baje hain", "i": "get_current_time", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:64 ('kitne baje hain'); router: miss"}
+{"t": "aaj ki tarkh kya hai", "i": "get_current_date", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:65 ('aaj ki tarikh kya hai'); router: miss"}
+{"t": "roshni badhao uh", "i": "brightness_up", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:66 ('roshni badhao'); router: ok"}
+{"t": "battery kitni uh hai", "i": "get_battery_status", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:67 ('battery kitni hai'); router: miss"}
+{"t": "koi uh joke sunao", "i": "get_joke", "l": "hinglish", "s": "noisy_stt", "n": "noisy-stt filler_insertion of golden/intents_hinglish.jsonl:68 ('koi joke sunao'); router: miss"}
+{"t": "awaz 50 pe karo", "i": "set_volume", "l": "hinglish", "s": "noisy_stt", "a": {"percent": 50}, "n": "noisy-stt typo_drop_letter of golden/intents_hinglish.jsonl:69 ('awaaz 50 pe karo'); router: miss"}

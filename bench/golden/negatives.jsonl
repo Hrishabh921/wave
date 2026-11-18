@@ -1,0 +1,80 @@
+{"t": "hey how are you doing today", "i": "chat", "l": "en"}
+{"t": "what's your favorite color", "i": "chat", "l": "en"}
+{"t": "can you explain how photosynthesis works", "i": "chat", "l": "en"}
+{"t": "I had a really long day at work", "i": "chat", "l": "en"}
+{"t": "do you like pizza", "i": "chat", "l": "en"}
+{"t": "I'm thinking about learning to play guitar", "i": "chat", "l": "en", "n": "contains 'play' but the message doesn't START with 'play ' so play_youtube's prefix rule correctly never looks at it"}
+{"t": "can you recommend a good book to read", "i": "chat", "l": "en"}
+{"t": "how do airplanes stay in the air", "i": "chat", "l": "en"}
+{"t": "I think I need a vacation", "i": "chat", "l": "en"}
+{"t": "can you help me write an email to my landlord", "i": "chat", "l": "en"}
+{"t": "I'm not sure what to have for dinner tonight", "i": "chat", "l": "en"}
+{"t": "tell me about volume discounts for bulk orders", "i": "chat", "l": "en", "n": "contains the word 'volume' but not any of the exact volume_up/volume_down trigger phrases"}
+{"t": "I love listening to music while I work", "i": "chat", "l": "en", "n": "contains 'music' but not 'pause music'/'resume music' etc as a substring"}
+{"t": "what's a good screen size for a gaming monitor", "i": "chat", "l": "en", "n": "contains 'screen' but not any read_screen_text/take_screenshot trigger phrase"}
+{"t": "aaj mera mood thoda off hai", "i": "chat", "l": "hinglish"}
+{"t": "tumhe konsa gaana pasand hai", "i": "chat", "l": "hinglish"}
+{"t": "mujhe thoda bore ho raha hai yaar", "i": "chat", "l": "hinglish"}
+{"t": "aaj office mein bahut kaam tha", "i": "chat", "l": "hinglish"}
+{"t": "the zoom call starts at 3pm", "i": "chat", "l": "en", "n": "Tier 15: contains 'zoom' but not the 'zoom in'/'zoom out'/'reset zoom' bigrams - Zoom the video-call app, not the browser tool"}
+{"t": "is the recycle bin full", "i": "chat", "l": "en", "n": "Tier 15: a question about it, not 'open'/'empty' it"}
+{"t": "what is in my recycle bin", "i": "chat", "l": "en"}
+{"t": "my new tablet arrived today", "i": "chat", "l": "en", "n": "Tier 15: real false-positive this row caught - 'new tab' IS a substring of 'new tablet', which is why new_tab/next_tab/previous_tab use _contains_words (whole-word matching) instead of plain _contains - see that rule's own comment in intent_router.py"}
+{"t": "my next tablet purchase is exciting", "i": "chat", "l": "en", "n": "Tier 15: same 'tab' is a prefix of 'tablet' issue as the row above, for next_tab"}
+{"t": "my previous tablet broke", "i": "chat", "l": "en", "n": "Tier 15: same issue, for previous_tab"}
+{"t": "mujhe task manager jaisa koi tool chahiye for my resume", "i": "chat", "l": "hinglish", "n": "Tier 15: mentions 'task manager' but isn't asking to open it"}
+{"t": "what do you think about climate change", "i": "chat", "l": "en"}
+{"t": "tell me something interesting", "i": "chat", "l": "en"}
+{"t": "I'm bored right now", "i": "chat", "l": "en"}
+{"t": "what's it like being an AI", "i": "chat", "l": "en"}
+{"t": "do you ever get tired", "i": "chat", "l": "en"}
+{"t": "what's the meaning of life", "i": "chat", "l": "en"}
+{"t": "I just got back from a trip", "i": "chat", "l": "en"}
+{"t": "my favorite season is autumn", "i": "chat", "l": "en"}
+{"t": "can you recommend a good book", "i": "chat", "l": "en"}
+{"t": "I'm trying to decide what to cook tonight", "i": "chat", "l": "en"}
+{"t": "what's your opinion on modern art", "i": "chat", "l": "en"}
+{"t": "I had a weird dream last night", "i": "chat", "l": "en"}
+{"t": "how do airplanes stay in the air", "i": "chat", "l": "en"}
+{"t": "what's the tallest mountain in the world", "i": "chat", "l": "en"}
+{"t": "I'm learning to play the piano", "i": "chat", "l": "en"}
+{"t": "do you have a favorite movie", "i": "chat", "l": "en"}
+{"t": "what's a good gift for a birthday", "i": "chat", "l": "en"}
+{"t": "I think I need a vacation", "i": "chat", "l": "en"}
+{"t": "what's the difference between a crocodile and an alligator", "i": "chat", "l": "en"}
+{"t": "tell me about the history of rome", "i": "chat", "l": "en"}
+{"t": "I'm feeling a bit tired today", "i": "chat", "l": "en"}
+{"t": "what's a fun fact about octopuses", "i": "chat", "l": "en"}
+{"t": "how does the stock market work", "i": "chat", "l": "en"}
+{"t": "what's your favorite type of music", "i": "chat", "l": "en"}
+{"t": "I think my plants need more water", "i": "chat", "l": "en"}
+{"t": "mujhe thoda bhook lagi hai", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk, unrelated to any skill"}
+{"t": "aaj mausam accha hai na", "i": "chat", "l": "hinglish", "n": "Hinglish small talk about weather, but NOT a get_weather request - no trigger phrase"}
+{"t": "mujhe neend aa rahi hai", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk"}
+{"t": "tum kaise ho", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk greeting"}
+{"t": "mujhe kal office jana hai", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk about plans"}
+{"t": "mera din bahut acha tha", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk"}
+{"t": "kya tumhe cricket pasand hai", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk question"}
+{"t": "aaj bahut kaam tha", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk"}
+{"t": "mujhe ek acchi movie suggest karo", "i": "chat", "l": "hinglish", "n": "contains 'karo' but no recognized trigger verb precedes a valid suffix - correctly deferred"}
+{"t": "tumhara favorite khana kya hai", "i": "chat", "l": "hinglish", "n": "pure Hinglish small talk question"}
+{"t": "I watched a great show last night", "i": "chat", "l": "en"}
+{"t": "what's for dinner tonight", "i": "chat", "l": "en"}
+{"t": "I need to clean my room this weekend", "i": "chat", "l": "en"}
+{"t": "do you think robots will take over someday", "i": "chat", "l": "en"}
+{"t": "I can't decide what to wear today", "i": "chat", "l": "en"}
+{"t": "my phone battery drains really fast", "i": "chat", "l": "en", "n": "contains 'battery' but is a complaint about a phone, not a get_battery_status request"}
+{"t": "what's a good hobby to pick up", "i": "chat", "l": "en"}
+{"t": "I've been meaning to learn spanish", "i": "chat", "l": "en"}
+{"t": "what's the best way to make coffee", "i": "chat", "l": "en"}
+{"t": "I think it might rain later", "i": "chat", "l": "en", "n": "mentions weather-adjacent topic but isn't a get_weather request - no trigger phrase"}
+{"t": "what's your favorite animal", "i": "chat", "l": "en"}
+{"t": "I just finished a really good book", "i": "chat", "l": "en"}
+{"t": "how do you make a good first impression", "i": "chat", "l": "en"}
+{"t": "what's the capital of australia", "i": "chat", "l": "en"}
+{"t": "I'm not sure what career path to take", "i": "chat", "l": "en"}
+{"t": "tell me a story about a dragon", "i": "chat", "l": "en"}
+{"t": "what's the difference between a virus and bacteria", "i": "chat", "l": "en"}
+{"t": "I think my code has a bug somewhere", "i": "chat", "l": "en", "n": "contains nothing router-relevant despite the technical topic"}
+{"t": "do you know any good podcasts", "i": "chat", "l": "en"}
+{"t": "what's the fastest land animal", "i": "chat", "l": "en"}

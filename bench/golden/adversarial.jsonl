@@ -1,0 +1,35 @@
+{"t": "don't close this window", "i": "chat", "l": "en", "n": "negation guard - the opposite of close_current_window"}
+{"t": "should I take a screenshot of this", "i": "chat", "l": "en", "n": "hypothetical guard ('should i ')"}
+{"t": "lock the pc before you leave the room", "i": "chat", "l": "en", "n": "conditional guard (' before ')"}
+{"t": "what happens if I mute the volume", "i": "chat", "l": "en", "n": "hypothetical guard"}
+{"t": "can you lock the pc", "i": "lock_pc", "l": "en", "n": "'can you ...' is DELIBERATELY not a guard marker (see intent_router.py's own docstring) - polite phrasing of a direct request still routes normally"}
+{"t": "could you take a screenshot for me", "i": "take_screenshot", "l": "en", "n": "same as above - 'could you' is ordinary polite phrasing, not a real question"}
+{"t": "never mind, lock the pc", "i": "chat", "l": "en", "n": "KNOWN over-cautious edge case, not a guard bug: 'never ' is a negation marker and fires here even though 'never mind' is dismissing something else, not negating the lock command - documented honestly rather than mislabeled to make the router look more precise than it is"}
+{"t": "don't forget to take a screenshot before the meeting", "i": "chat", "l": "en", "n": "negation + conditional both present - 'don't forget to X' is a reminder framing, correctly deferred"}
+{"t": "close the tab and then open spotify", "i": "chat", "l": "en", "n": "compound guard ('and then ') - two distinct instructions in one message"}
+{"t": "pause the music after this song ends", "i": "chat", "l": "en", "n": "conditional guard (' after ')"}
+{"t": "play hooky today, I don't feel like working", "i": "chat", "l": "en", "n": "_PREFIX_ARG_IDIOM_STARTS - 'hooky' right after 'play ' is the idiom 'play hooky', not a play_youtube query"}
+{"t": "close the deal with the client", "i": "chat", "l": "en", "n": "_PREFIX_ARG_IDIOM_STARTS - 'the deal' right after 'close ' is the idiom, the literal example from intent_router.py's own comment"}
+{"t": "open to suggestions here, what do you think", "i": "chat", "l": "en", "n": "_PREFIX_ARG_IDIOM_STARTS - 'to ' right after 'open ' is the idiom 'open to suggestions'"}
+{"t": "agar time mile to pc lock kar dena", "i": "chat", "l": "hinglish", "n": "conditional guard (' agar ')"}
+{"t": "pc lock mat karna abhi", "i": "chat", "l": "hinglish", "n": "negation guard ('mat kar'/'mat karo' family)"}
+{"t": "don't empty the recycle bin", "i": "chat", "l": "en", "n": "Tier 15: negation guard - the opposite of empty_recycle_bin"}
+{"t": "should I empty the recycle bin", "i": "chat", "l": "en", "n": "Tier 15: hypothetical guard"}
+{"t": "pc shutdown karu ya nahi", "i": "chat", "l": "hinglish", "n": "Tier 15: pre-existing gap found while adding empty_recycle_bin's rule, fixed by adding 'ya nahi' to _HYPOTHETICAL_MARKERS - this is the OLD shutdown_pc tool, not a new Tier 15 one, proving the fix is general"}
+{"t": "empty the recycle bin ya nahi karu", "i": "chat", "l": "hinglish", "n": "Tier 15: same 'ya nahi' fix, this time on the new empty_recycle_bin rule itself"}
+{"t": "dont redo that", "i": "chat", "l": "en", "n": "Tier 15: negation guard on redo_keystroke"}
+{"t": "agar zaroorat ho to recycle bin empty kar dena", "i": "chat", "l": "hinglish", "n": "Tier 15: conditional guard ('agar ... to')"}
+{"t": "don't open spotify", "i": "chat", "l": "en", "n": "negation guard - the opposite of open_app"}
+{"t": "don't set the volume to 80", "i": "chat", "l": "en", "n": "negation guard - the opposite of set_volume"}
+{"t": "should I restart the pc", "i": "chat", "l": "en", "n": "hypothetical guard"}
+{"t": "what happens if I close discord", "i": "chat", "l": "en", "n": "hypothetical guard"}
+{"t": "cancel the reminder before you forget", "i": "chat", "l": "en", "n": "conditional guard (' before ')"}
+{"t": "take a note after this call ends", "i": "chat", "l": "en", "n": "conditional guard (' after ')"}
+{"t": "open spotify and then set the volume to 50", "i": "chat", "l": "en", "n": "compound guard ('and then ')"}
+{"t": "can you open discord for me", "i": "chat", "l": "en", "n": "'can you ...' is deliberately not a guard marker - polite phrasing still routes normally"}
+{"t": "could you set the volume to 30", "i": "set_volume", "l": "en", "n": "'could you' is ordinary polite phrasing, not a real question"}
+{"t": "would you mind opening spotify", "i": "chat", "l": "en", "n": "KNOWN over-cautious edge case: 'would you mind' reads as a real question grammatically even though it's polite phrasing in practice - documented honestly rather than mislabeled"}
+{"t": "never mind, cancel the dentist reminder", "i": "chat", "l": "en", "n": "KNOWN over-cautious edge case, not a guard bug: 'never ' fires as negation even though 'never mind' dismisses something else - same documented limitation as the existing lock_pc row"}
+{"t": "don't forget to take a note before the meeting", "i": "chat", "l": "en", "n": "negation + conditional both present - reminder framing, correctly deferred"}
+{"t": "close spotify and then open discord and then restart chrome", "i": "chat", "l": "en", "n": "compound guard with three chained instructions"}
+{"t": "close discord and open chrome", "i": "close_app", "l": "en", "a": {"app_name": "discord and open chrome"}, "n": "KNOWN GAP, not a guard bug to silently paper over: the compound guard's marker list only recognizes 'and then ', not a bare ' and ' joining two verb phrases, so this wrongly routes as one close_app call with an over-extended app_name instead of being deferred as a compound instruction. Surfaced by Tier 17's own bench-growth verification; left as a documented finding for a future tier's guard work rather than fixed here (out of this tier's scope)."}

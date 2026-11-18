@@ -1,0 +1,541 @@
+/* main.css - the web UI's copy of the PyQt6 desktop UI's look.
+ *
+ * Reference: ui/theme.py's ThemeManager.build_stylesheet() (the QSS every
+ * desktop widget is styled with) plus the per-widget inline setStyleSheet()
+ * calls in ui/main_window.py and ui/*_panel.py. Selectors are named after
+ * the Qt widget/class they mirror (".panel" = QFrame.Panel, ".btn.action" =
+ * QPushButton.ActionBtn, ...) so a change on one side is easy to find on
+ * the other. 1 CSS px == 1 Qt logical px. Colours come from tokens.css /
+ * js/theme.js.
+ */
+
+* { box-sizing: border-box; }
+html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg-main);
+    color: var(--text-muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+}
+button, input, textarea, select { font-family: inherit; }
+.fa { font-family: "FA6 Solid"; font-weight: 900; font-style: normal; line-height: 1; display: inline-block; text-align: center; }
+.emoji { font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; line-height: 1; display: inline-block; text-align: center; }
+.hidden { display: none !important; }
+
+/* ------------------------------------------------------------ backdrop */
+/* ui/effects.py AuroraBackdrop: bg_main + three radial blobs (accent_1/2/3,
+ * alpha 60 -> 20 -> 0), blurred, then a 40-alpha black wash on top. */
+#backdrop {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+        linear-gradient(rgba(0,0,0,0.157), rgba(0,0,0,0.157)),
+        radial-gradient(circle calc(max(100vw, 100vh) * 0.90) at 50% 85%, var(--blob-3-a, rgba(255,214,10,0.235)) 0%, var(--blob-3-b, rgba(255,214,10,0.078)) 55%, var(--blob-3-c, rgba(255,214,10,0)) 100%),
+        radial-gradient(circle calc(max(100vw, 100vh) * 0.85) at 80% 25%, var(--blob-2-a, rgba(255,107,157,0.235)) 0%, var(--blob-2-b, rgba(255,107,157,0.078)) 55%, var(--blob-2-c, rgba(255,107,157,0)) 100%),
+        radial-gradient(circle calc(max(100vw, 100vh) * 0.90) at 20% 15%, var(--blob-1-a, rgba(0,212,170,0.235)) 0%, var(--blob-1-b, rgba(0,212,170,0.078)) 55%, var(--blob-1-c, rgba(0,212,170,0)) 100%),
+        var(--bg-main);
+}
+#backdrop.blurred { filter: blur(var(--backdrop-blur, 25px)); transform: scale(1.04); }
+
+/* ---------------------------------------------------------------- shell */
+#app { position: relative; z-index: 1; display: flex; height: 100vh; width: 100vw; }
+
+/* QWidget#Sidebar */
+#sidebar {
+    width: 210px; flex: 0 0 210px; height: 100%;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border-soft);
+    padding: 22px 16px 18px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden;
+}
+.brand-icon { width: 38px; height: 32px; flex: none; display: block; }
+.wordmark { color: var(--text-main); font-size: 18px; font-weight: 700; letter-spacing: 1.5px; margin-top: 8px; white-space: nowrap; line-height: 1.33; }
+.tagline { color: var(--text-faint); font-size: 10px; line-height: 1.33; white-space: nowrap; }
+#nav { display: flex; flex-direction: column; gap: 4px; margin-top: 20px; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+#nav::-webkit-scrollbar { display: none; }
+.sidebar-stretch { flex: 1 1 0; min-height: 0; }
+.divider { background: var(--border); height: 1px; min-height: 1px; flex: none; border: none; }
+#sidebar .divider { margin-bottom: 10px; }
+.mini-status { font-size: 10.5px; font-weight: 700; color: var(--text-muted); white-space: nowrap; line-height: 1.33; }
+
+/* QPushButton.NavItem */
+.nav-item {
+    height: 44px; flex: none; display: flex; align-items: center;
+    padding: 11px 14px; border-radius: 14px; border: none;
+    background: transparent; color: var(--text-muted);
+    font-size: 12.5px; font-weight: 700; text-align: left; cursor: pointer;
+    white-space: nowrap; outline: none;
+}
+.nav-item .nav-icon { font-size: 21px; width: 20px; height: 20px; line-height: 20px; color: var(--text-muted); margin-right: 11.5px; flex: none; overflow: visible; }
+.nav-item:hover { background-color: var(--surface-hover); color: var(--text-main); }
+.nav-item.checked {
+    background: linear-gradient(to right, var(--nav-checked-c0), var(--nav-checked-c1));
+    color: var(--text-main);
+    border: 1px solid var(--nav-checked-border);
+}
+.nav-item.stagger { opacity: 0; animation: fadeIn 200ms var(--ease-out-cubic) forwards; }
+
+/* ------------------------------------------------------- sliding stack */
+#stack { position: relative; flex: 1 1 auto; height: 100%; overflow: hidden; min-width: 0; }
+.page { position: absolute; inset: 0; display: none; overflow: hidden; }
+.page.current, .page.sliding { display: block; }
+.page.page-bg { background-color: var(--page-bg); }
+.page-inner { position: relative; display: flex; flex-direction: column; min-height: 100%; }
+.scroll-y { overflow-y: auto; overflow-x: hidden; height: 100%; }
+
+/* wrap_scroll(): the viewport's "background: transparent" cascades to the
+ * whole page on the desktop, so Panels lose their fill there (borders and
+ * drop-shadow halos stay) - see the module notes in app.js. */
+.transparent-panels .panel { background: transparent; }
+.transparent-panels .divider { background: transparent; }
+
+/* --------------------------------------------------------------- panels */
+/* QFrame.Panel */
+.panel {
+    background: linear-gradient(to bottom, var(--panel-top), var(--panel-bottom));
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255,255,255,0.18);
+    min-width: 0;
+}
+.shadow { filter: var(--shadow); }
+.shadow-sm { filter: drop-shadow(0 6px 9px rgba(0,0,0,0.706)); }   /* add_shadow(blur=24, y=6) */
+.shadow-xs { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.706)); }   /* add_shadow(blur=16, y=4) */
+
+/* --------------------------------------------------------------- labels */
+.lbl { color: var(--text-muted); font-size: 13px; line-height: 1.33; }
+.heading { color: var(--text-faint); font-size: 11px; font-weight: 700; letter-spacing: 2px; line-height: 1.33; white-space: nowrap; }
+.page-title { color: var(--text-main); font-size: 21px; font-weight: 700; line-height: 1.33; white-space: nowrap; }
+.page-subtitle { color: var(--text-muted); font-size: 12px; line-height: 1.33; }
+.contact-name { color: var(--text-main); font-size: 14px; font-weight: 700; line-height: 1.33; }
+.status-message { font-size: 12px; line-height: 1.33; white-space: nowrap; }
+.info-data { color: var(--text-main); font-size: 12px; font-weight: 400; line-height: 1.33; }
+.gauge-caption { color: var(--text-muted); font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-align: center; line-height: 1.33; }
+.gauge-detail { color: var(--text-faint); font-size: 10.5px; text-align: center; line-height: 1.33; }
+.note-faint { color: var(--text-faint); font-size: 11px; line-height: 1.33; }
+.wrap { white-space: pre-wrap; word-wrap: break-word; }
+
+/* ---------------------------------------------------- back row (header) */
+.back-row { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.back-row .title-row { display: flex; align-items: center; gap: 12px; height: 34px; }
+.back-btn { width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: visible; white-space: nowrap; }
+.back-btn .fa { font-size: 19px; width: 18px; }
+.back-btn .arrow { font-size: 15px; }
+
+/* -------------------------------------------------------------- buttons */
+/* QPushButton (base rule) */
+.btn {
+    background-color: var(--bg-surface); color: var(--text-muted);
+    border-radius: 14px; padding: 10px 15px;
+    font-weight: 400; font-size: 12px; line-height: 16px;
+    border: 1px solid var(--border);
+    cursor: pointer; outline: none; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover { background-color: rgba(50,50,50,1); border: 1px solid var(--accent-1); color: var(--text-main); }
+.btn:active { background-color: var(--surface-pressed); }
+.btn:disabled { cursor: default; }
+.btn .fa { font-size: 17px; width: 16px; }
+.btn .emoji { font-size: 14px; }
+
+/* QPushButton.ActionBtn */
+.btn.action { padding: 10px 16px; font-size: 12px; border-radius: 14px; background-color: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border); }
+.btn.action:hover { color: var(--accent-2); border: 1px solid var(--accent-2); background-color: rgba(50,50,50,1); }
+/* QPushButton.Pill */
+.btn.pill { border-radius: 16px; padding: 9px 13px; font-size: 11.5px; font-weight: 700; background-color: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border); }
+.btn.pill:hover { border: 1px solid var(--accent-1); color: var(--text-main); }
+.btn.pill.active { background-color: var(--accent-1); color: #000000; border: 1px solid var(--accent-1); }
+.btn.pill .fa { font-size: 19px; width: 18px; }
+.btn.pill .emoji { font-size: 16px; width: 18px; }
+/* QPushButton.DangerPill */
+.btn.danger-pill { border-radius: 16px; padding: 9px 13px; font-size: 11.5px; font-weight: 700; background-color: var(--bg-surface); color: var(--danger); border: 1px solid var(--danger-pill-border); }
+.btn.danger-pill:hover { background-color: var(--danger); color: #FFFFFF; border: 1px solid var(--danger); }
+/* QPushButton.IconBtn */
+.btn.icon-btn { background: transparent; border: none; border-radius: 18px; font-size: 15px; color: var(--text-muted); padding: 0; }
+.btn.icon-btn:hover { background-color: var(--surface-hover); color: var(--text-main); border: none; }
+/* QPushButton.RoundSm */
+.btn.round-sm { border-radius: 19px; font-size: 14px; background-color: var(--bg-surface); color: var(--text-main); border: 1px solid var(--border); padding: 0; }
+/* QPushButton#SaveBtn */
+.btn.save { border-radius: 14px; background: linear-gradient(to right, var(--accent-1), var(--accent-2)); color: #000000; border: none; font-weight: 700; padding: 10px 16px; }
+.btn.save:hover { background: linear-gradient(to right, var(--accent-2), var(--accent-1)); color: #000000; border: none; }
+/* QPushButton#SendBtn */
+.btn.send { width: 42px; height: 42px; border-radius: 21px; background: linear-gradient(to right, var(--accent-1), var(--accent-2)); color: #000000; border: none; font-weight: 700; padding: 0; flex: none; }
+.btn.send:hover { background: linear-gradient(to right, var(--accent-2), var(--accent-1)); border: none; }
+.btn.send .emoji { font-size: 18px; color: #000; }
+/* QPushButton#MicInline */
+.btn.mic-inline { width: 42px; height: 42px; border-radius: 21px; font-size: 15px; background-color: var(--bg-surface); color: var(--accent-1); border: 1px solid var(--border); padding: 0; flex: none; }
+.btn.mic-inline:hover { border: 1px solid var(--accent-1); background-color: rgba(50,50,50,1); }
+.btn.mic-inline.awake { background: linear-gradient(to right, var(--accent-2), var(--accent-1)); color: #FFFFFF; border: none; filter: drop-shadow(0 0 9px var(--glow, rgba(0,212,170,0.59))); }
+.btn.mic-inline .fa { font-size: 19px; width: 18px; color: var(--accent-1); }
+.btn.mic-inline .emoji { font-size: 17px; }
+
+/* ---------------------------------------------------------------- inputs */
+/* QLineEdit */
+.line-edit {
+    background-color: var(--bg-surface); color: var(--text-main);
+    border: 1px solid var(--border); border-radius: 22px;
+    padding: 12px 20px; font-size: 14px; line-height: 20px; height: 46px;
+    outline: none; min-width: 0; width: 100%; user-select: text;
+}
+.line-edit:focus { border: 1px solid var(--accent-1); background-color: var(--surface-hover); }
+.line-edit::placeholder { color: var(--text-faint); }
+.line-edit:disabled { color: var(--text-faint); }
+.line-edit.small { border-radius: 8px; padding: 8px 10px; height: auto; font-size: 14px; }
+.line-edit.hotkey { width: 200px; flex: none; border-radius: 8px; padding: 8px 12px; height: auto; background: var(--bg-surface); color: var(--text-muted); font-size: 14px; }
+.line-edit.hotkey.capturing { background: var(--accent-1-q30); color: var(--accent-1); border: 1px solid var(--accent-1); }
+
+/* QTextEdit#StickyNote */
+.sticky {
+    background-color: var(--bg-surface); color: var(--text-main);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px; font-size: 12px; line-height: 1.4; outline: none; resize: none;
+    width: 100%; user-select: text;
+}
+.sticky:focus { border: 1px solid var(--accent-1); }
+.sticky::placeholder { color: var(--text-faint); }
+.transparent-panels .sticky { background: transparent; }
+
+/* QComboBox (+ its popup, see .combo-popup) */
+.combo {
+    background: var(--bg-surface); color: var(--text-main); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 12px; font-size: 12px; line-height: 16px;
+    cursor: pointer; display: flex; align-items: center; min-height: 34px; outline: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 36px;
+}
+.combo.disabled { opacity: 0.6; cursor: default; }
+.transparent-panels .combo { background: transparent; }
+.combo-popup {
+    position: fixed; z-index: 400; background: var(--bg-panel); color: var(--text-main);
+    border: 1px solid var(--border); padding: 0; max-height: 320px; overflow-y: auto; font-size: 12px;
+}
+.combo-popup .opt { padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.combo-popup .opt:hover, .combo-popup .opt.sel { background: var(--accent-1); color: #000000; }
+
+/* QSpinBox */
+.spin { background: var(--bg-surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 12px; width: 76px; outline: none; user-select: text; }
+.spin::-webkit-outer-spin-button, .spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.transparent-panels .spin { background: transparent; }
+
+/* QCheckBox: the desktop's checked indicator image (url(:/qta/check))
+ * doesn't exist, so a checked box is a plain filled accent square. */
+.check { display: inline-flex; white-space: nowrap; align-items: center; gap: 10px; color: var(--text-main); font-size: 12px; cursor: pointer; line-height: 1.33; }
+.check .box { width: 18px; height: 18px; flex: none; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-surface); }
+.check.on .box { background: var(--accent-1); border: 1px solid var(--accent-1); }
+.check.tight { gap: 8px; }
+
+/* QSlider (horizontal) */
+.slider { position: relative; height: 22px; flex: 1 1 auto; min-width: 60px; cursor: pointer; touch-action: none; }
+.slider .groove { position: absolute; left: 0; right: 0; top: 8px; height: 6px; border-radius: 3px; background: var(--bg-surface2); }
+.slider .sub { position: absolute; left: 0; top: 8px; height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--accent-1), var(--accent-2)); }
+.slider .handle { position: absolute; top: 2px; width: 18px; height: 18px; border-radius: 9px; background: var(--accent-1); border: 2px solid var(--bg-main); margin-left: -9px; }
+.slider:hover .handle { background: var(--accent-2); }
+.slider.disabled { opacity: 0.55; pointer-events: none; }
+
+/* scrollbars (QScrollBar:vertical) */
+::-webkit-scrollbar { width: 6px; height: 16px; background: transparent; }
+::-webkit-scrollbar-thumb:vertical { background: var(--border); min-height: 20px; border-radius: 3px; }
+::-webkit-scrollbar-thumb:vertical:hover { background: var(--accent-1); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+/* horizontal ones keep Fusion's own look (the QSS never styled them) */
+::-webkit-scrollbar:horizontal { height: 16px; background: #1e1e1e; }
+::-webkit-scrollbar-thumb:horizontal { background: #3c3c3c; border: 1px solid #2a2a2a; border-radius: 2px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* --------------------------------------------------------- QTreeView */
+.tree { color: var(--text-main); font-size: 12px; width: 100%; border-collapse: collapse; }
+.tree-wrap { overflow: auto; flex: 1 1 0; min-height: 0; }
+.tree th {
+    background-color: var(--surface-header); color: var(--text-muted); border: none;
+    padding: 8px; font-size: 10.5px; font-weight: 700; text-align: left; position: sticky; top: 0; z-index: 1;
+}
+.tree td { padding: 6px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree tbody tr:nth-child(even) td { background-color: rgba(255,255,255,0.03); }
+.tree tbody tr:hover td { background-color: var(--surface-hover); }
+.tree tbody tr.selected td { background-color: var(--accent-1); color: #000000; }
+.tree .twisty { display: inline-block; width: 14px; color: var(--text-muted); font-size: 11px; text-align: center; cursor: pointer; font-family: "Segoe UI Symbol", var(--font-ui); }
+.tree .ficon { display: inline-block; width: 20px; text-align: center; margin-right: 4px; }
+
+/* --------------------------------------------------------- QListWidget */
+.list { overflow-y: auto; overflow-x: auto; min-height: 0; font-size: 12px; color: var(--text-main); outline: none; }
+.list .item { padding: 10px 14px; border-radius: 10px; color: var(--text-main); cursor: default; white-space: pre; }
+.list .item:hover { background: var(--surface-hover); }
+.list .item.selected { background: var(--accent-1); color: #000000; }
+/* variants built from each panel's own inline QListWidget sheet */
+.list.boxed { background: rgba(0,0,0,0.15); border: 1px solid var(--border-soft); border-radius: 8px; padding: 4px; }
+.list.boxed .item { padding: 10px; border-radius: 6px; margin: 2px; background: rgba(255,255,255,0.03); color: var(--text-main); }
+.list.boxed .item:hover { background: var(--surface-hover); }
+.list.boxed .item.selected { background: var(--accent-1); color: #000; }
+.list.boxed.steps .item.selected { background: var(--accent-1-q25); color: var(--text-main); }
+.list.boxed.catalog .item { padding: 8px 10px; margin: 1px; }
+.list.side .item { padding: 10px 12px; color: var(--text-muted); border-radius: 6px; margin-bottom: 2px; }
+.list.side .item:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+.list.side .item.selected { background: var(--accent-1-q30); color: var(--accent-1); }
+.list.files .item { padding: 6px 8px; color: var(--text-muted); border-radius: 6px; margin: 0; }
+.list.files .item:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+.list.files .item.selected { background: var(--accent-1-q30); color: var(--accent-1); }
+.list.events { font-size: 11px; color: var(--text-main); }
+.list.events .item { padding: 6px 4px; border-radius: 0; border-bottom: 1px solid var(--border-soft); white-space: pre-wrap; }
+.list.events .item:hover { background: var(--surface-hover); }
+
+/* QTableWidget (Performance page) - Fusion's dark palette base */
+.qtable-wrap { flex: 1 1 0; min-height: 0; overflow: auto; background: #2d2d2d; }
+.qtable { width: 100%; border-collapse: collapse; color: var(--text-main); font-size: 12px; }
+.qtable th { background-color: var(--surface-header); color: var(--text-muted); padding: 8px; font-size: 10.5px; font-weight: 700; border: none; position: sticky; top: 0; }
+.qtable td { padding: 4px 6px; border-right: 1px solid #3a3a3a; border-bottom: 1px solid #3a3a3a; }
+
+/* ------------------------------------------------------------- tooltip */
+#tooltip {
+    position: fixed; z-index: 600; pointer-events: none; display: none;
+    background-color: var(--bg-surface2); color: var(--text-main); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 6px; font-size: 12px; white-space: pre;
+}
+
+/* ---------------------------------------------------------------- menus */
+.qmenu { position: fixed; z-index: 500; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; min-width: 160px; font-size: 12px; }
+.qmenu .mi { padding: 8px 24px; color: var(--text-main); border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.qmenu .mi:hover { background: var(--accent-1); color: #000000; }
+.qmenu .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+/* ------------------------------------------------- dialogs (QMessageBox) */
+.overlay { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25); }
+.overlay.top { align-items: flex-start; padding-top: 80px; background: transparent; }
+.msgbox { background-color: var(--dialog-bg); border: 1px solid var(--border); min-width: 360px; max-width: 520px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); animation: fadeIn 150ms ease-out; }
+.msgbox .mb-title { height: 32px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--text-main); background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--border-soft); }
+.msgbox .mb-body { display: flex; gap: 12px; padding: 18px 18px 8px 18px; align-items: flex-start; }
+.msgbox .mb-icon { font-size: 30px; line-height: 1; }
+.msgbox .mb-text { color: var(--text-main); font-size: 13px; padding: 6px; white-space: pre-wrap; line-height: 1.45; }
+.msgbox .mb-input { margin: 4px 18px 6px 18px; }
+.msgbox .mb-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px 18px; }
+.msgbox .mb-btn { background-color: var(--bg-surface2); color: var(--text-main); border: 1px solid var(--border); border-radius: 10px; padding: 8px 18px; font-weight: 700; min-width: 90px; font-size: 12px; cursor: pointer; }
+.msgbox .mb-btn:hover { border: 1px solid var(--accent-1); color: var(--accent-1); }
+.msgbox .mb-label { color: var(--text-muted); font-size: 13px; padding: 0 18px; }
+
+/* ------------------------------------------------------------- toasts */
+#toasts { position: fixed; top: 24px; right: 24px; z-index: 450; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.toast {
+    pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: 420px;
+    padding: 12px 16px; border-radius: 22px;
+    background: linear-gradient(to bottom, var(--panel-top), var(--panel-bottom));
+    border: 1px solid var(--border); border-top: 1px solid rgba(255,255,255,0.18);
+    animation: fadeIn 200ms var(--ease-out-cubic);
+}
+.toast .t-icon { font-size: 16px; }
+.toast .t-msg { color: var(--text-main); font-size: 12px; line-height: 1.35; flex: 1 1 auto; white-space: pre-wrap; }
+.toast .t-close { width: 20px; height: 20px; background: transparent; border: none; color: #888; font-size: 12px; cursor: pointer; padding: 0; flex: none; }
+.toast.leaving { opacity: 0; transition: opacity 150ms; }
+
+/* ---------------------------------------------------- command palette */
+.palette { width: 640px; border-radius: 22px; overflow: hidden; animation: fadeIn 150ms ease-out; }
+.palette .p-input { background: var(--bg-surface); color: var(--text-main); border: none; border-radius: 0; padding: 16px 20px; font-size: 16px; border-bottom: 1px solid var(--border); width: 100%; outline: none; user-select: text; }
+.palette .p-input::placeholder { color: var(--text-faint); }
+.palette .p-list { max-height: 420px; overflow-y: auto; }
+.palette .p-item { padding: 12px 20px; color: var(--text-main); font-size: 13px; cursor: pointer; }
+.palette .p-item:hover { background: rgba(40,40,40,1); }
+.palette .p-item.sel { background: var(--accent-1); color: #000000; }
+
+/* ----------------------------------------------------------- onboarding */
+.wizard { width: 520px; height: 460px; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; animation: fadeIn 200ms ease-out; }
+.wizard .dots { display: flex; justify-content: center; gap: 8px; }
+.wizard .dots span { width: 12px; height: 12px; font-size: 10px; line-height: 12px; text-align: center; color: var(--text-faint); }
+.wizard .dots span.on { color: var(--accent-1); }
+.wizard .w-icon { font-size: 48px; text-align: center; line-height: 1.1; }
+.wizard .w-title { color: var(--text-main); font-size: 22px; font-weight: 700; text-align: center; line-height: 1.2; }
+.wizard .w-desc { color: var(--text-muted); font-size: 13px; text-align: center; line-height: 1.5; white-space: pre-line; }
+.wizard .w-content { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.wizard .w-buttons { display: flex; justify-content: flex-end; gap: 12px; }
+.wizard .w-status { text-align: center; font-size: 12px; color: var(--text-muted); }
+
+/* ================================================================ HOME */
+.home-wrap { padding: 20px; height: 100%; }
+.home-dash { display: flex; flex-direction: column; gap: 16px; }
+.home-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.dash-tile { min-height: 150px; border-radius: 22px; cursor: pointer; display: flex; flex-direction: column; overflow: hidden; background: transparent; border: 1px solid var(--border); border-top: 1px solid rgba(255,255,255,0.18); filter: drop-shadow(0 6px 9px rgba(0,0,0,0.706)); transition: filter 120ms; }
+.dash-tile:hover { filter: drop-shadow(0 8px 11px var(--tile-glow, rgba(0,212,170,0.39))); }
+.dash-tile .tile-title { height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; background-color: rgba(255,255,255,0.05); border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.dash-tile .tile-title .emoji { font-size: 13px; }
+.dash-tile .tile-title .tl { color: var(--text-main); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.dash-tile .tile-preview { position: relative; flex: 1 1 auto; overflow: hidden; background: rgba(0,0,0,0.3); border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.dash-tile .tile-preview .clone { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; pointer-events: none; }
+
+/* ================================================================ CHAT */
+.chat-wrap { padding: 20px; height: 100%; display: flex; flex-direction: column; gap: 14px; }
+.chat-panel { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.chat-header { height: 68px; flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 18px 10px 22px; background-color: var(--bg-panel); border-bottom: 1px solid var(--border-soft); border-top-left-radius: 21px; border-top-right-radius: 21px; }
+.avatar-w { width: 40px; height: 40px; border-radius: 20px; flex: none; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, var(--accent-1), var(--accent-2)); color: #FFFFFF; font-size: 16px; font-weight: 700; }
+.chat-header .name-col { display: flex; flex-direction: column; gap: 6px; }
+.chat-header .stretch { flex: 1 1 auto; }
+.chat-header .btn.icon-btn { width: 34px; height: 34px; }
+.chat-header .btn.icon-btn .fa { font-size: 19px; color: var(--text-muted); }
+.activity-banner { background: var(--accent-1-q18); color: var(--accent-1); padding: 6px 22px; font-size: 11px; font-weight: 700; flex: none; line-height: 1.33; }
+.chat-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.chat-list { display: flex; flex-direction: column; gap: 8px; padding: 16px 22px; min-height: 100%; }
+.bubble-row { display: flex; }
+.bubble-row.user { justify-content: flex-end; }
+.bubble-row.ai { justify-content: flex-start; }
+.bubble { position: relative; max-width: 420px; padding: 10px 14px 8px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bubble .b-shape { position: absolute; inset: 0; pointer-events: none; }
+.bubble .b-shape .body { position: absolute; top: 0; bottom: 0; border-radius: 15px; }
+.bubble.ai .b-shape .body { left: 9px; right: 0; background: var(--bubble-recv); }
+.bubble.user .b-shape .body { left: 0; right: 9px; background: var(--bubble-sent); }
+.bubble .b-shape .tail { position: absolute; bottom: 0; width: 18px; height: 19px; }
+.bubble.ai .b-shape .tail { left: 0; }
+.bubble.user .b-shape .tail { right: 0; }
+.bubble .b-text { position: relative; font-size: 14px; line-height: 2.0; color: var(--text-main); word-wrap: break-word; overflow-wrap: anywhere; user-select: text; padding: 4px 4px 14px 4px; }
+.bubble.user .b-text { color: #000000; }
+.bubble .b-text ::selection { background: var(--accent-1-q80); }
+.bubble .b-text p { margin: 0 0 6px 0; }
+.bubble .b-text p:last-child { margin-bottom: 0; }
+.bubble .b-text h1, .bubble .b-text h2, .bubble .b-text h3 { margin: 6px 0 4px 0; font-weight: 700; }
+.bubble .b-text h1 { font-size: 17px; } .bubble .b-text h2 { font-size: 15.5px; } .bubble .b-text h3 { font-size: 14.5px; }
+.bubble .b-text ul, .bubble .b-text ol { margin: 2px 0 8px 18px; padding: 0; }
+.bubble .b-text li { margin: 2px 0; }
+.bubble .b-text a { color: var(--accent-1); }
+.bubble .b-text blockquote { border-left: 3px solid var(--accent-1); margin: 6px 0; padding: 2px 0 2px 10px; color: var(--text-muted); }
+.bubble.user .b-text blockquote { color: rgba(0,0,0,0.65); }
+.bubble .b-text table { border-collapse: collapse; margin: 6px 0; }
+.bubble .b-text th, .bubble .b-text td { border: 1px solid var(--border); padding: 4px 9px; }
+.bubble.user .b-text th, .bubble.user .b-text td { border-color: rgba(0,0,0,0.18); }
+.bubble .b-text th { background: rgba(255,255,255,0.06); font-weight: 700; }
+.bubble .b-text code { background: #1E1E1E; padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 12.5px; }
+.bubble.user .b-text code { background: rgba(0,0,0,0.16); }
+.bubble .b-text pre, .bubble .b-text .codehilite { background: #1E1E1E; border-radius: 8px; padding: 10px 12px; margin: 6px 0; overflow-x: auto; }
+.bubble .b-text pre { border: 1px solid var(--border-soft); }
+.bubble .b-text .codehilite pre { border: none; padding: 0; margin: 0; background: transparent !important; }
+.bubble .b-text pre code { background: transparent; padding: 0; }
+.bubble .stamp-row { position: relative; display: flex; align-items: center; gap: 8px; }
+.bubble .react { width: 22px; height: 22px; background: transparent; border: none; font-size: 11px; padding: 0; color: var(--text-faint); cursor: pointer; border-radius: 11px; }
+.bubble .stamp { font-size: 10px; color: var(--text-faint); }
+.bubble.user .stamp { color: rgba(0,0,0,0.5); margin-left: auto; }
+.bubble .ticks { color: #006B5A; font-size: 10px; font-weight: 700; }
+.bubble .replay { width: 18px; height: 18px; background: transparent; border: none; font-size: 10px; color: var(--text-faint); padding: 0; cursor: pointer; }
+.bubble .copy { position: relative; align-self: flex-end; width: 24px; height: 24px; background: var(--accent-1); color: #000; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: none; }
+.bubble:hover .copy { display: block; }
+.bubble .attach-img { max-width: 260px; max-height: 260px; border-radius: 10px; display: block; position: relative; }
+.bubble .attach-doc { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); }
+.bubble.user .attach-doc { background: rgba(255,255,255,0.16); }
+.bubble .attach-doc .ad-name { font-size: 12px; font-weight: 700; color: var(--text-main); }
+.bubble.user .attach-doc .ad-name { color: #000; }
+.bubble .attach-doc .ad-meta { font-size: 10px; color: var(--text-faint); }
+.bubble.user .attach-doc .ad-meta { color: rgba(0,0,0,0.55); }
+.caption-row { display: flex; justify-content: flex-end; }
+.live-caption { color: rgba(150,160,180,0.95); font-style: italic; padding: 6px 12px; border: 1px dashed rgba(140,150,170,0.55); border-radius: 12px; background: transparent; font-size: 13px; max-width: 420px; }
+.input-bar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 22px 14px 22px; background-color: var(--bg-panel); border-top: 1px solid var(--border-soft); border-bottom-left-radius: 21px; border-bottom-right-radius: 21px; }
+.visualizer { height: 40px; width: 100%; display: block; }
+.attach-chip { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background-color: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; }
+.attach-chip .ac-thumb { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+.attach-chip .ac-thumb img { width: 36px; height: 36px; object-fit: cover; }
+.attach-chip .ac-name { color: var(--text-main); font-size: 12px; font-weight: 700; }
+.attach-chip .ac-meta { color: var(--text-faint); font-size: 10.5px; }
+.attach-chip .btn.icon-btn { width: 26px; height: 26px; }
+.input-row { display: flex; align-items: flex-end; gap: 10px; }
+.chat-input {
+    flex: 1 1 auto; min-width: 0; height: 44px; max-height: 132px; resize: none; overflow-y: auto;
+    background-color: var(--bg-surface); color: var(--text-main); border: 1px solid var(--border);
+    border-radius: 20px; padding: 10px 16px; font-size: 14px; line-height: 20px; outline: none; user-select: text;
+}
+.chat-input:focus { border: 1px solid var(--accent-1); background-color: var(--surface-hover); }
+.chat-input::placeholder { color: var(--text-faint); }
+
+/* Dodo page (web only): Wave's character, the Tier 25b avatar - moved out
+   of the chat panel onto its own page, just above Chat in the sidebar */
+.dodo-wrap { padding: 20px; height: 100%; display: flex; flex-direction: column; gap: 14px; }
+.dodo-stage { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px 26px; overflow: hidden; }
+.dodo-mount { flex: 1 1 0; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+#avatar-panel { height: 100%; max-width: 100%; display: flex; align-items: center; justify-content: center; }
+.avatar-frame { position: relative; height: 100%; max-width: 100%; border-radius: 18px; overflow: hidden; background: var(--bg-surface2); border: 1px solid var(--border); transition: border-color 400ms, box-shadow 400ms; }
+.avatar-canvas { width: 100%; height: 100%; display: block; }
+.avatar-live-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 9px 12px; background: rgba(0, 0, 0, 0.6); color: #FFFFFF; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-align: center; }
+.avatar-panel.prominent .avatar-frame { border-color: var(--accent-1); box-shadow: 0 0 28px color-mix(in srgb, var(--accent-1) 35%, transparent); }
+.avatar-img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.avatar-placeholder { color: var(--text-muted); font-size: 13px; line-height: 1.5; text-align: center; max-width: 420px; }
+.dodo-state { flex: none; font-size: 11px; font-weight: 700; letter-spacing: 2px; white-space: pre; text-transform: uppercase; }
+.dodo-stage:not(:has(#avatar-panel)) .dodo-state { display: none; }
+.avatar-panel[data-avatar-state="speaking"] .avatar-frame { border-color: var(--accent-1); }
+.avatar-panel[data-avatar-state="thinking"] .avatar-frame { border-color: var(--warning); }
+.avatar-panel[data-avatar-state="listening"] .avatar-frame { border-color: var(--accent-2); }
+
+/* ================================================= standard page layout */
+/* v.setContentsMargins(32, 28, 32, 28); v.setSpacing(20) */
+.std { padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; min-height: 100%; }
+.std.files { padding: 28px 32px 20px 32px; gap: 14px; height: 100%; }
+.vbox { display: flex; flex-direction: column; }
+.hbox { display: flex; flex-direction: row; }
+.grow { flex: 1 1 0; min-width: 0; }
+.stretch { flex: 1 1 0; }
+.center { align-items: center; }
+.g6 { gap: 6px; } .g8 { gap: 8px; } .g10 { gap: 10px; } .g12 { gap: 12px; } .g14 { gap: 14px; } .g16 { gap: 16px; } .g20 { gap: 20px; } .g24 { gap: 24px; } .g26 { gap: 26px; }
+.none { flex: none; }
+
+/* system monitor */
+.gauge-cell { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 0; }
+.gauge-cell canvas.gauge { width: 110px; height: 110px; align-self: center; }
+canvas.spark { width: 100%; height: 36px; display: block; }
+.net-sparks { display: flex; align-items: center; gap: 6px; }
+.net-sparks canvas.spark { flex: 1 1 0; min-width: 100px; }
+
+/* music */
+canvas.disc { width: 76px; height: 76px; flex: none; }
+.transport { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.btn.play-big { width: 68px; height: 68px; border-radius: 34px; border: none; padding: 0; background: linear-gradient(to right, var(--accent-1), var(--accent-2)); color: #000; font-size: 21px; font-weight: 700; }
+.btn.play-big:hover { border: none; background: linear-gradient(to right, var(--accent-1), var(--accent-2)); }
+.btn.play-big .fa { font-size: 29px; width: 28px; color: #000; }
+.btn.seek { width: 44px; height: 44px; font-size: 10.5px; font-weight: 700; color: var(--text-main); }
+.btn.round52 { width: 52px; height: 52px; }
+.btn.round52 .emoji { font-size: 20px; }
+.clock-big { color: var(--text-main); font-family: var(--font-ui); font-size: 13px; font-weight: 700; line-height: 1.33; }
+
+/* left list column used by Workflows / Memory - its frame's sheet has no
+ * selector, so bg + border-right cascade onto every child widget too. */
+.side-col { flex: none; height: 100%; background: var(--bg-panel); border-right: 1px solid var(--border-soft); padding: 20px 16px; display: flex; flex-direction: column; gap: 10px; }
+.side-col > .heading, .side-col > .btn, .side-col > .hbox > .btn, .side-col > .legend { border-right: 1px solid var(--border-soft); }
+.side-col > .btn, .side-col > .hbox > .btn { background-color: var(--bg-panel); }
+.legend { color: var(--text-faint); font-size: 10.5px; line-height: 1.33; }
+
+/* settings */
+.settings-root { display: flex; height: 100%; }
+.cat-list { width: 200px; flex: none; height: 100%; background: var(--bg-panel); border-right: 1px solid var(--border-soft); overflow: hidden; }
+.cat-list .cat { padding: 14px 16px; color: var(--text-muted); font-weight: 400; font-size: 12px; cursor: pointer; border-left: 3px solid transparent; border-left-width: 0; line-height: 1.33; }
+.cat-list .cat:hover { background: rgba(40,40,40,1); color: var(--text-main); }
+.cat-list .cat.selected { background: var(--accent-1-q30); color: var(--accent-1); border-left: 3px solid var(--accent-1); }
+.settings-pages { flex: 1 1 auto; min-width: 0; height: 100%; overflow-y: auto; }
+.form-panel { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+.accent-btn { height: 40px; border-radius: 8px; border: none; font-weight: 700; color: #000; cursor: pointer; flex: 1 1 0; font-size: 12px; }
+.qr-box { min-height: 180px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); font-size: 11px; }
+.qr-box img { image-rendering: pixelated; max-width: 220px; }
+.about-html { text-align: center; line-height: 1.8; }
+.about-html h2 { color: var(--text-main); margin: 0; font-size: 19px; }
+.about-html p { margin: 8px 0; }
+.about-html hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* memory/workflows title */
+.big-title { color: var(--text-main); font-size: 18px; font-weight: 700; line-height: 1.33; }
+.small-status { color: var(--text-muted); font-size: 11px; line-height: 1.33; }
+
+/* activity rows / clipboard rows */
+.entry { background-color: var(--bg-surface); border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; }
+.transparent-panels .entry { background-color: var(--bg-surface); }
+.entry .mark { width: 18px; flex: none; font-size: 14px; font-weight: 700; }
+.entry .e-title { color: var(--text-main); font-size: 12px; font-weight: 400; line-height: 1.33; }
+.entry .e-sub { color: var(--text-faint); font-size: 11px; line-height: 1.33; }
+.entry .btn.action { width: 70px; flex: none; padding: 10px 6px; }
+.empty-note { color: var(--text-faint); font-size: 12px; padding: 20px; line-height: 1.33; }
+
+/* wrap_scroll() pages, continued: the viewport's selector-less
+ * "background: transparent" also beats the window sheet's QPushButton /
+ * QLineEdit / QComboBox / QSpinBox / StickyNote fills (a nearer ancestor's
+ * sheet wins in Qt), so on those pages the controls are outlines only -
+ * except where a widget sets its own background (activity/clipboard rows,
+ * the hotkey and avatar path fields, the big play button). */
+.transparent-panels .btn:not(.keep-bg):not(.active),
+.transparent-panels .btn:not(.keep-bg):not(.active):hover,
+.transparent-panels .btn:not(.keep-bg):not(.active):active { background: transparent; }
+.transparent-panels .entry .btn:not(.active) { background-color: var(--bg-surface); }
+.transparent-panels .line-edit:not(.small):not(.hotkey),
+.transparent-panels .line-edit:not(.small):not(.hotkey):focus,
+.transparent-panels .combo, .transparent-panels .spin,
+.transparent-panels .sticky, .transparent-panels .sticky:focus { background: transparent; }
+/* two stretch-1 columns (QHBoxLayout addWidget(w, 1) x2) are equal width */
+.cols-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }

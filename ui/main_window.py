@@ -1,2651 +1,41 @@
-import logging
-import time
-import os
-import ctypes
-import json
-import socket
-import random
-import math
-import re
-import pyautogui
-import psutil
-import requests
-from collections import deque
-from datetime import datetime
-from typing import Optional, List, Dict, Any, Callable
-from dataclasses import dataclass, field
-from functools import partial
+"""
+ui/main_window.py
+=============================================================================
+MainWindow: the application's top-level QMainWindow - navigation, pages,
+wiring of WaveBrain/workers/voice/vision/automation into the UI, and the
+NAV_ITEMS / QUICK_APPS / ACTIVITY_PAGE_INDEX constants + get_system_volume()
+/ set_system_volume() helpers it uses.
+
+This file used to hold ALL 22 UI classes (5,245 lines). It now holds just
+MainWindow (the thing that actually needs all the others wired together);
+the rest were split into focused files below ui/ - see ui/common.py for
+the shared-imports rationale. Everything that was importable from
+`ui.main_window` before (ThemeColors, Icon, AuroraBackdrop, ChatBubble,
+SettingsPanel, etc.) is still importable from here via the re-exporting
+`from ui.X import *` lines below, so external code / tests do not need to
+change their import paths.
+"""
+from ui.common import *
+from ui.theme import *
+from ui.icons import *
+from ui.effects import *
+from ui.widgets_basic import *
+from ui.chat_widgets import *
+from ui.dashboard_tile import *
+from ui.command_palette import *
+from ui.onboarding import *
+from ui.settings_panel import *
+from ui.workflows_panel import WorkflowsPanel
+from ui.memory_panel import MemoryPanel
+from ui.reminders_panel import RemindersPanel
+from ui.notes_todos_panel import NotesTodosPanel
+from ui.calendar_panel import CalendarPanel
+from ui.skills_panel import SkillsPanel
+from ui.performance_panel import PerformancePanel
+from ui.toast import *
+from ui.worker_pool import *
 
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QPushButton, QLineEdit, QLabel, QFrame, QScrollArea, QSizePolicy,
-    QGraphicsDropShadowEffect, QTextEdit, QSlider, QButtonGroup, QTreeView, QMessageBox,
-    QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QDialog, QMenu,
-    QGraphicsOpacityEffect, QStackedWidget, QListWidget, QListWidgetItem,
-    QTextBrowser, QSplitter, QTabWidget, QCheckBox, QComboBox, QSpinBox,
-    QColorDialog, QFileDialog, QFormLayout, QProgressBar, QToolTip
-)
-from PyQt6.QtCore import (
-    Qt, QThread, pyqtSignal, QTimer, QRectF, QPointF, QPoint, QDir,
-    QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QEvent,
-    QObject, QRect, QSize, QMimeData, QUrl
-)
-from PyQt6.QtGui import (
-    QFont, QPainter, QColor, QPen, QPolygonF, QLinearGradient, QRadialGradient,
-    QBrush, QFileSystemModel, QPixmap, QIcon, QAction, QCursor, QTextCharFormat,
-    QSyntaxHighlighter, QTextDocument, QShortcut, QKeySequence, QTextCursor
-)
 
-try:
-    import qtawesome as qta
-    HAS_QTA = True
-except ImportError:
-    HAS_QTA = False
-
-try:
-    import keyboard
-    HAS_KEYBOARD = True
-except ImportError:
-    HAS_KEYBOARD = False
-
-try:
-    from pygments import highlight
-    from pygments.lexers import get_lexer_by_name, guess_lexer, TextLexer
-    from pygments.formatters import HtmlFormatter
-    from pygments.styles import get_style_by_name
-    HAS_PYGMENTS = True
-except ImportError:
-    HAS_PYGMENTS = False
-
-try:
-    import markdown as _markdown_lib
-    HAS_MARKDOWN = True
-except ImportError:
-    HAS_MARKDOWN = False
-
-try:
-    from pypdf import PdfReader
-    HAS_PYPDF = True
-except ImportError:
-    HAS_PYPDF = False
-
-from brain.groq_core import WaveBrain
-from monitoring.sys_monitor import SystemMonitor
-from voice.tts import tts_engine
-from voice.stt import stt_engine
-from automation.app_control import AppController
-from automation.file_manager import FileManager
-from vision.screen_capture import VisionCapture
-from vision.ocr_engine import ocr
-from database.db_manager import db
-from settings.config import config
-from monitoring.media_info import get_now_playing, seek_to, format_time, HAS_WINSDK
-
-try:
-    import screen_brightness_control as sbc
-    HAS_SBC = True
-except ImportError:
-    HAS_SBC = False
-
-try:
-    import comtypes
-    from ctypes import cast, POINTER
-    from comtypes import CLSCTX_ALL
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-    HAS_PYCAW = True
-except ImportError:
-    HAS_PYCAW = False
-
-try:
-    import pyperclip
-    HAS_PYPERCLIP = True
-except ImportError:
-    HAS_PYPERCLIP = False
-
-logger = logging.getLogger("GUI")
-SETTINGS_FILE = "wave_settings.json"
-THEMES_DIR = "themes"
-
-
-# =============================================================================
-# 🎨 THEME SYSTEM
-# =============================================================================
-@dataclass
-class ThemeColors:
-    name: str = "Black Glass"
-    bg_main: str = "#000000"
-    bg_panel: str = "rgba(20,20,20,0.95)"
-    bg_surface: str = "rgba(30,30,30,0.98)"
-    bg_surface2: str = "#1A1A1A"
-    border: str = "rgba(255,255,255,0.15)"
-    border_soft: str = "rgba(255,255,255,0.08)"
-    text_main: str = "#FFFFFF"
-    text_muted: str = "#B0B0B0"
-    text_faint: str = "#808080"
-    accent_1: str = "#00D4AA"
-    accent_2: str = "#FF6B9D"
-    accent_3: str = "#FFD60A"
-    success: str = "#00E676"
-    warning: str = "#FFD60A"
-    danger: str = "#FF3D5A"
-    bubble_sent: str = "#00D4AA"
-    bubble_recv: str = "#1A1A1A"
-    page_bg_alpha: float = 0.95
-    panel_top_alpha: float = 0.98
-    panel_bottom_alpha: float = 0.92
-
-    def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        return cls(**{k: v for k, v in data.items() if k in cls.__annotations__})
-
-
-class ThemeManager(QObject):
-    theme_changed = pyqtSignal(ThemeColors)
-    
-    def __init__(self):
-        super().__init__()
-        self._themes: Dict[str, ThemeColors] = {}
-        self._current: ThemeColors = ThemeColors()
-        self._load_builtin_themes()
-        self._load_custom_themes()
-    
-    def _load_builtin_themes(self):
-        self._themes["Black Glass"] = ThemeColors()
-        self._themes["Midnight Blue"] = ThemeColors(
-            name="Midnight Blue",
-            bg_main="#050A1A",
-            bg_panel="rgba(15,20,40,0.95)",
-            bg_surface="rgba(20,25,50,0.98)",
-            bg_surface2="#101830",
-            border="rgba(100,150,255,0.2)",
-            border_soft="rgba(100,150,255,0.1)",
-            accent_1="#00B4D8",
-            accent_2="#90E0EF",
-            accent_3="#FFD60A",
-            bubble_sent="#00B4D8",
-            bubble_recv="#101830",
-        )
-        self._themes["Emerald Dark"] = ThemeColors(
-            name="Emerald Dark",
-            bg_main="#001008",
-            bg_panel="rgba(10,30,20,0.95)",
-            bg_surface="rgba(15,40,25,0.98)",
-            bg_surface2="#0A2518",
-            border="rgba(0,255,150,0.2)",
-            border_soft="rgba(0,255,150,0.1)",
-            accent_1="#00FF96",
-            accent_2="#00D4AA",
-            accent_3="#FFD60A",
-            bubble_sent="#00FF96",
-            bubble_recv="#0A2518",
-        )
-        self._themes["Crimson Dark"] = ThemeColors(
-            name="Crimson Dark",
-            bg_main="#1A0008",
-            bg_panel="rgba(40,10,20,0.95)",
-            bg_surface="rgba(50,15,25,0.98)",
-            bg_surface2="#2A0A18",
-            border="rgba(255,60,120,0.2)",
-            border_soft="rgba(255,60,120,0.1)",
-            accent_1="#FF3C6E",
-            accent_2="#FF6B9D",
-            accent_3="#FFD60A",
-            bubble_sent="#FF3C6E",
-            bubble_recv="#2A0A18",
-        )
-        self._themes["Amber Dark"] = ThemeColors(
-            name="Amber Dark",
-            bg_main="#1A1000",
-            bg_panel="rgba(40,30,10,0.95)",
-            bg_surface="rgba(50,40,15,0.98)",
-            bg_surface2="#2A200A",
-            border="rgba(255,180,0,0.2)",
-            border_soft="rgba(255,180,0,0.1)",
-            accent_1="#FFB400",
-            accent_2="#FFD60A",
-            accent_3="#FF6B9D",
-            bubble_sent="#FFB400",
-            bubble_recv="#2A200A",
-        )
-    
-    def _load_custom_themes(self):
-        os.makedirs(THEMES_DIR, exist_ok=True)
-        for fname in os.listdir(THEMES_DIR):
-            if fname.endswith(".json"):
-                try:
-                    with open(os.path.join(THEMES_DIR, fname), "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    theme = ThemeColors.from_dict(data)
-                    self._themes[theme.name] = theme
-                except Exception as e:
-                    logger.warning(f"Failed to load theme {fname}: {e}")
-    
-    def get_theme(self, name: str) -> Optional[ThemeColors]:
-        return self._themes.get(name)
-    
-    def get_current(self) -> ThemeColors:
-        return self._current
-    
-    def set_theme(self, name: str):
-        if name in self._themes:
-            self._current = self._themes[name]
-            self.theme_changed.emit(self._current)
-            self.save_last_theme(name)
-    
-    def get_theme_names(self) -> List[str]:
-        return list(self._themes.keys())
-    
-    def save_custom_theme(self, theme: ThemeColors):
-        self._themes[theme.name] = theme
-        os.makedirs(THEMES_DIR, exist_ok=True)
-        path = os.path.join(THEMES_DIR, f"{theme.name}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(theme.to_dict(), f, indent=2)
-    
-    def save_last_theme(self, name: str):
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-        data["last_theme"] = name
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    
-    def get_last_theme(self) -> str:
-        try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get("last_theme", "Black Glass")
-        except Exception:
-            return "Black Glass"
-    
-    def build_stylesheet(self, theme: ThemeColors) -> str:
-        t = theme
-        return f"""
-        QMainWindow {{ background-color: {t.bg_main}; }}
-        QWidget {{ font-family: 'Segoe UI'; }}
-        QToolTip {{ background-color: {t.bg_surface2}; color: {t.text_main}; border: 1px solid {t.border}; padding: 4px 8px; border-radius: 6px; }}
-
-        QWidget#Sidebar {{ background-color: {t.bg_panel}; border-right: 1px solid {t.border_soft}; }}
-        QWidget#PageBg {{ background-color: rgba(20,20,20,{t.page_bg_alpha}); }}
-        QWidget#ChatHeader {{ background-color: {t.bg_panel}; border-bottom: 1px solid {t.border_soft}; }}
-        QWidget#ChatInputBar {{ background-color: {t.bg_panel}; border-top: 1px solid {t.border_soft}; }}
-
-        QFrame.Panel {{
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(30,30,30,{t.panel_top_alpha}), stop:1 rgba(20,20,20,{t.panel_bottom_alpha}));
-            border-radius: 22px;
-            border: 1px solid {t.border};
-            border-top: 1px solid rgba(255,255,255,0.18);
-        }}
-        QFrame.Divider {{
-            background-color: {t.border};
-            max-height: 1px; min-height: 1px; border: none;
-        }}
-
-        QLabel {{ color: {t.text_muted}; font-size: 13px; background: transparent; }}
-        QLabel.Wordmark {{ color: {t.text_main}; font-size: 18px; font-weight: 800; letter-spacing: 1.5px; }}
-        QLabel.Tagline {{ color: {t.text_faint}; font-size: 10px; }}
-        QLabel.Heading {{ color: {t.text_faint}; font-size: 11px; font-weight: 700; letter-spacing: 2px; }}
-        QLabel.PageTitle {{ color: {t.text_main}; font-size: 21px; font-weight: 800; }}
-        QLabel.PageSubtitle {{ color: {t.text_muted}; font-size: 12px; }}
-        QLabel.ContactName {{ color: {t.text_main}; font-size: 14px; font-weight: 700; }}
-        QLabel.StatusMessage {{ font-size: 12px; }}
-        QLabel.InfoData {{ color: {t.text_main}; font-size: 12px; font-weight: 600; }}
-        QLabel.GaugeCaption {{ color: {t.text_muted}; font-size: 10.5px; font-weight: 700; letter-spacing: 1px; }}
-        QLabel.GaugeDetail {{ color: {t.text_faint}; font-size: 10.5px; }}
-        QLabel.ClockBig {{ color: {t.text_main}; }}
-
-        QLineEdit {{
-            background-color: {t.bg_surface};
-            color: {t.text_main};
-            border: 1px solid {t.border};
-            border-radius: 22px;
-            padding: 12px 20px;
-            font-size: 14px;
-        }}
-        QLineEdit:focus {{ border: 1px solid {t.accent_1}; background-color: rgba(40,40,40,1); }}
-        QLineEdit::placeholder {{ color: {t.text_faint}; }}
-
-        QTextEdit#ChatInputBox {{
-            background-color: {t.bg_surface};
-            color: {t.text_main};
-            border: 1px solid {t.border};
-            border-radius: 20px;
-            padding: 10px 16px;
-            font-size: 14px;
-        }}
-        QTextEdit#ChatInputBox:focus {{ border: 1px solid {t.accent_1}; background-color: rgba(40,40,40,1); }}
-
-        QTextEdit#StickyNote {{
-            background-color: {t.bg_surface};
-            color: {t.text_main};
-            border: 1px solid {t.border};
-            border-radius: 14px;
-            padding: 12px;
-            font-size: 12px;
-        }}
-        QTextEdit#StickyNote:focus {{ border: 1px solid {t.accent_1}; }}
-
-        QPushButton {{
-            background-color: {t.bg_surface};
-            color: {t.text_muted};
-            border-radius: 14px;
-            padding: 10px 15px;
-            font-weight: 600;
-            font-size: 12px;
-            border: 1px solid {t.border};
-        }}
-        QPushButton:hover {{ background-color: rgba(50,50,50,1); border: 1px solid {t.accent_1}; color: {t.text_main}; }}
-        QPushButton:pressed {{ background-color: rgba(10,10,10,1); }}
-
-        QPushButton.NavItem {{
-            text-align: left; padding: 11px 14px; border-radius: 14px;
-            background: transparent; color: {t.text_muted}; border: none;
-            font-size: 12.5px; font-weight: 700;
-        }}
-        QPushButton.NavItem:hover {{ background-color: rgba(40,40,40,1); color: {t.text_main}; }}
-        QPushButton.NavItem:checked {{
-            background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {t.accent_1}40, stop:1 {t.accent_2}20);
-            color: {t.text_main};
-            border: 1px solid {t.accent_1}80;
-        }}
-
-        QPushButton.Pill {{
-            background-color: {t.bg_surface};
-            color: {t.text_muted};
-            border: 1px solid {t.border};
-            border-radius: 16px;
-            padding: 9px 13px;
-            font-size: 11.5px;
-            font-weight: 700;
-        }}
-        QPushButton.Pill:hover {{ border: 1px solid {t.accent_1}; color: {t.text_main}; }}
-        QPushButton.Pill[active="true"] {{
-            background-color: {t.accent_1};
-            color: #000000;
-            border: 1px solid {t.accent_1};
-        }}
-
-        QPushButton.DangerPill {{
-            background-color: {t.bg_surface};
-            color: {t.danger};
-            border: 1px solid {t.danger}50;
-            border-radius: 16px;
-            padding: 9px 13px;
-            font-size: 11.5px;
-            font-weight: 700;
-        }}
-        QPushButton.DangerPill:hover {{ background-color: {t.danger}; color: #FFFFFF; border: 1px solid {t.danger}; }}
-
-        QPushButton.IconBtn {{
-            background: transparent; border: none; border-radius: 18px;
-            font-size: 15px; color: {t.text_muted}; padding: 0px;
-        }}
-        QPushButton.IconBtn:hover {{ background-color: rgba(40,40,40,1); color: {t.text_main}; }}
-
-        QPushButton.ActionBtn {{
-            padding: 10px 16px; font-size: 12px; border-radius: 14px;
-            background-color: {t.bg_surface}; color: {t.text_muted}; border: 1px solid {t.border};
-        }}
-        QPushButton.ActionBtn:hover {{ color: {t.accent_2}; border: 1px solid {t.accent_2}; }}
-
-        QPushButton.RoundSm {{
-            border-radius: 19px; font-size: 14px; background-color: {t.bg_surface};
-            color: {t.text_main}; border: 1px solid {t.border}; padding: 0px;
-        }}
-
-        QPushButton#SaveBtn {{
-            border-radius: 14px;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {t.accent_1}, stop:1 {t.accent_2});
-            color: #000000; border: none; font-weight: 800; padding: 10px 16px;
-        }}
-        QPushButton#SaveBtn:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {t.accent_2}, stop:1 {t.accent_1}); }}
-
-        QPushButton#SendBtn {{
-            border-radius: 21px;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {t.accent_1}, stop:1 {t.accent_2});
-            color: #000000; border: none; font-weight: 800; padding: 0px;
-        }}
-        QPushButton#SendBtn:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {t.accent_2}, stop:1 {t.accent_1}); }}
-
-        QPushButton#MicInline {{
-            border-radius: 21px; font-size: 15px; background-color: {t.bg_surface};
-            color: {t.accent_1}; border: 1px solid {t.border}; padding: 0px;
-        }}
-
-        QSlider::groove:horizontal {{ border-radius: 3px; height: 6px; background: {t.bg_surface2}; }}
-        QSlider::sub-page:horizontal {{
-            border-radius: 3px;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {t.accent_1}, stop:1 {t.accent_2});
-        }}
-        QSlider::handle:horizontal {{
-            background: {t.accent_1}; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px;
-            border: 2px solid {t.bg_main};
-        }}
-        QSlider::handle:horizontal:hover {{ background: {t.accent_2}; }}
-
-        QTreeView {{
-            background-color: transparent; color: {t.text_main}; border: none;
-            border-radius: 16px; font-size: 12px; alternate-background-color: rgba(255,255,255,0.03);
-        }}
-        QTreeView::item {{ padding: 5px; }}
-        QTreeView::item:selected {{ background-color: {t.accent_1}; color: #000000; }}
-        QTreeView::item:hover {{ background-color: rgba(40,40,40,1); }}
-        QHeaderView::section {{
-            background-color: rgba(30,30,30,1); color: {t.text_muted}; border: none;
-            padding: 8px; font-size: 10.5px; font-weight: 700;
-        }}
-
-        QScrollArea {{ border: none; background-color: transparent; }}
-        QScrollBar:vertical {{ border: none; background: transparent; width: 6px; margin: 0px; }}
-        QScrollBar::handle:vertical {{ background: {t.border}; min-height: 20px; border-radius: 3px; }}
-        QScrollBar::handle:vertical:hover {{ background: {t.accent_1}; }}
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
-
-        QMessageBox {{ background-color: #0A0A0A; border: 1px solid {t.border}; }}
-        QMessageBox QLabel {{ color: {t.text_main}; font-size: 13px; background: transparent; padding: 6px; }}
-        QMessageBox QPushButton {{
-            background-color: {t.bg_surface2}; color: {t.text_main}; border: 1px solid {t.border};
-            border-radius: 10px; padding: 8px 18px; font-weight: 700; min-width: 90px;
-        }}
-        QMessageBox QPushButton:hover {{ border: 1px solid {t.accent_1}; color: {t.accent_1}; }}
-
-        QDialog {{ background-color: {t.bg_main}; }}
-        QListWidget {{ background: transparent; border: none; outline: none; }}
-        QListWidget::item {{ padding: 10px 14px; border-radius: 10px; color: {t.text_main}; }}
-        QListWidget::item:hover {{ background: rgba(40,40,40,1); }}
-        QListWidget::item:selected {{ background: {t.accent_1}; color: #000000; }}
-
-        QTabWidget::pane {{ border: 1px solid {t.border}; border-radius: 12px; background: {t.bg_panel}; }}
-        QTabBar::tab {{ background: transparent; color: {t.text_muted}; padding: 10px 20px; font-weight: 600; }}
-        QTabBar::tab:selected {{ color: {t.accent_1}; }}
-        QTabBar::tab:hover {{ color: {t.text_main}; }}
-
-        QComboBox {{ background: {t.bg_surface}; color: {t.text_main}; border: 1px solid {t.border}; border-radius: 10px; padding: 8px 12px; }}
-        QComboBox::drop-down {{ border: none; width: 24px; }}
-        QComboBox QAbstractItemView {{ background: {t.bg_panel}; color: {t.text_main}; selection-background-color: {t.accent_1}; selection-color: #000000; border: 1px solid {t.border}; }}
-
-        QSpinBox {{ background: {t.bg_surface}; color: {t.text_main}; border: 1px solid {t.border}; border-radius: 10px; padding: 8px 12px; }}
-        QCheckBox {{ color: {t.text_main}; spacing: 8px; }}
-        QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 4px; border: 1px solid {t.border}; background: {t.bg_surface}; }}
-        QCheckBox::indicator:checked {{ background: {t.accent_1}; border: 1px solid {t.accent_1}; image: url(:/qta/check); }}
-
-        QProgressBar {{ border: 1px solid {t.border}; border-radius: 6px; background: {t.bg_surface2}; text-align: center; color: {t.text_main}; }}
-        QProgressBar::chunk {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {t.accent_1}, stop:1 {t.accent_2}); border-radius: 5px; }}
-        """
-
-
-# =============================================================================
-# 🎯 ICON HELPER (qtawesome fallback to emoji)
-# =============================================================================
-class Icon:
-    @staticmethod
-    def get(name: str, color: str = None, size: int = 18) -> QIcon:
-        if HAS_QTA:
-            try:
-                kwargs = {"color": color} if color else {}
-                return qta.icon(f"fa6s.{name}", **kwargs, options=[{"scale_factor": 1.2}])
-            except Exception:
-                pass
-        # Fallback emoji mapping
-        emoji_map = {
-            "house": "🏠", "message": "💬", "chart-line": "📊", "bolt": "⚡",
-            "music": "🎵", "folder": "📁", "eye": "👁", "clipboard": "📋",
-            "gear": "⚙", "mic": "🎙", "send": "➤", "trash": "🗑",
-            "play": "▶", "pause": "⏸", "skip-back": "⏮", "skip-forward": "⏭",
-            "volume-up": "🔊", "volume-down": "🔉", "volume-mute": "🔇",
-            "sun": "☀", "moon": "🌙", "lock": "🔒", "unlock": "🔓",
-            "check": "✓", "x": "✕", "plus": "+", "minus": "-",
-            "search": "🔍", "settings": "⚙", "terminal": "💻",
-            "code": "💻", "copy": "📋", "speaker": "🔊", "camera": "📷",
-            "chevron-left": "←", "chevron-right": "→", "chevron-down": "▼",
-            "star": "⭐", "heart": "❤️", "thumbs-up": "👍", "laugh": "😂",
-            "surprise": "😮", "sad": "😢", "angry": "😡", "sparkles": "✨",
-            "palette": "🎨", "keyboard": "⌨", "shield": "🛡", "download": "⬇",
-            "upload": "⬆", "wifi": "📶", "bluetooth": "📱", "monitor": "🖥",
-            "database": "🗄", "server": "🖧", "cpu": "🧠", "memory": "💾",
-            "hard-drive": "💿", "battery": "🔋", "plug": "🔌", "thermometer": "🌡",
-            "zap": "⚡", "activity": "📈", "bar-chart": "📊", "pie-chart": "📊",
-            "users": "👥", "user": "👤", "bot": "🤖", "brain": "🧠",
-            "terminal": "💻", "code": "💻", "file-text": "📄", "image": "🖼",
-            "video": "🎬", "music": "🎵", "headphones": "🎧", "mic": "🎙",
-            "paperclip": "📎", "xmark": "✕",
-        }
-        emoji = emoji_map.get(name, "⬜")
-        lbl = QLabel(emoji)
-        lbl.setFixedSize(size, size)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if color:
-            lbl.setStyleSheet(f"color: {color}; font-size: {size}px;")
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        lbl.render(pixmap)
-        return QIcon(pixmap)
-
-    @staticmethod
-    def set_btn_icon(btn, name: str, color: str = None, size: int = 18):
-        """🚨 FIX: this now works whether `btn` is a button-like widget
-        (QPushButton/QToolButton — anything with setIcon) OR a plain QLabel
-        (which only has setPixmap). Calling this on a QLabel used to crash
-        with AttributeError: 'QLabel' object has no attribute 'setIcon' —
-        that's exactly what was happening in _make_stat_card()."""
-        icon = Icon.get(name, color, size)
-        if hasattr(btn, "setIcon"):
-            btn.setIcon(icon)
-            if hasattr(btn, "setIconSize"):
-                btn.setIconSize(QSize(size, size))
-        elif hasattr(btn, "setPixmap"):
-            btn.setPixmap(icon.pixmap(QSize(size, size)))
-
-
-
-# =============================================================================
-# 🌫️ AURORA BACKDROP (Theme-aware)
-# =============================================================================
-class AuroraBackdrop(QWidget):
-    def __init__(self, theme: ThemeColors, parent=None):
-        super().__init__(parent)
-        self._theme = theme
-        self._blur_radius = 25.0
-        self._cache = None
-        self._cache_key = None
-
-    def set_theme(self, theme: ThemeColors):
-        self._theme = theme
-        self._cache = None
-        self.update()
-
-    def set_blur_radius(self, radius: float):
-        self._blur_radius = max(0.0, radius)
-        self._cache = None
-        self.update()
-
-    def resizeEvent(self, event):
-        self._cache = None
-        super().resizeEvent(event)
-
-    def _render_backdrop(self, w, h):
-        scale = 0.5
-        rw, rh = max(1, int(w * scale)), max(1, int(h * scale))
-
-        raw = QPixmap(rw, rh)
-        raw.fill(QColor(self._theme.bg_main))
-        painter = QPainter(raw)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        # Theme-aware blobs
-        c1 = QColor(self._theme.accent_1)
-        c2 = QColor(self._theme.accent_2)
-        c3 = QColor(self._theme.accent_3)
-        blobs = [
-            (0.20, 0.15, 0.90, c1),
-            (0.80, 0.25, 0.85, c2),
-            (0.50, 0.85, 0.90, c3),
-        ]
-        for fx, fy, fr, color in blobs:
-            cx, cy = rw * fx, rh * fy
-            radius = max(rw, rh) * fr
-            grad = QRadialGradient(cx, cy, radius)
-            c0 = QColor(color); c0.setAlpha(60)
-            c1 = QColor(color); c1.setAlpha(20)
-            c2 = QColor(color); c2.setAlpha(0)
-            grad.setColorAt(0.0, c0)
-            grad.setColorAt(0.55, c1)
-            grad.setColorAt(1.0, c2)
-            painter.setBrush(QBrush(grad))
-            painter.drawRect(raw.rect())
-        painter.end()
-
-        if self._blur_radius > 0.5:
-            scene = QGraphicsScene()
-            item = QGraphicsPixmapItem(raw)
-            effect = QGraphicsBlurEffect()
-            effect.setBlurRadius(self._blur_radius)
-            item.setGraphicsEffect(effect)
-            scene.addItem(item)
-            blurred = QPixmap(rw, rh)
-            blurred.fill(Qt.GlobalColor.transparent)
-            p2 = QPainter(blurred)
-            scene.render(p2, QRectF(0, 0, rw, rh), QRectF(0, 0, rw, rh))
-            p2.end()
-            result = blurred
-        else:
-            result = raw
-
-        p3 = QPainter(result)
-        p3.fillRect(result.rect(), QColor(0, 0, 0, 40))
-        p3.end()
-
-        return result.scaled(w, h, Qt.AspectRatioMode.IgnoreAspectRatio,
-                              Qt.TransformationMode.SmoothTransformation)
-
-    def paintEvent(self, event):
-        w, h = max(1, self.width()), max(1, self.height())
-        key = (w, h, round(self._blur_radius, 1))
-        if self._cache is None or self._cache_key != key:
-            self._cache = self._render_backdrop(w, h)
-            self._cache_key = key
-        painter = QPainter(self)
-        painter.drawPixmap(0, 0, self._cache)
-
-
-# =============================================================================
-# 🎬 ANIMATION HELPERS
-# =============================================================================
-class Anim:
-    @staticmethod
-    def fade_in(widget: QWidget, duration: int = 250, start: float = 0.0, end: float = 1.0):
-        eff = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(eff)
-        # `widget` is passed as the animation's parent so Qt (C++ side) keeps it alive.
-        # Previously `anim` had no parent, so Python garbage-collected it the instant
-        # this function returned (nothing else held a reference) - which killed the
-        # animation before it ever ran, leaving widgets stuck at opacity 0 (invisible)
-        # forever, even though they stayed fully clickable underneath. That's exactly
-        # why the sidebar nav list was invisible but still worked on click.
-        anim = QPropertyAnimation(eff, b"opacity", widget)
-        anim.setDuration(duration)
-        anim.setStartValue(start)
-        anim.setEndValue(end)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        if end >= 1.0:
-            # Fully faded in -> drop the effect so the widget renders normally
-            # afterward instead of staying wrapped in an offscreen compositing layer.
-            anim.finished.connect(lambda: widget.setGraphicsEffect(None))
-        anim.start()
-        return anim
-
-    @staticmethod
-    def slide_in(widget: QWidget, direction: str = "left", duration: int = 300):
-        """direction: left, right, up, down"""
-        start_pos = widget.pos()
-        w, h = widget.width(), widget.height()
-        if direction == "left":
-            end_pos = QPoint(0, 0)
-            start_pos = QPoint(-w, 0)
-        elif direction == "right":
-            end_pos = QPoint(0, 0)
-            start_pos = QPoint(w, 0)
-        elif direction == "up":
-            end_pos = QPoint(0, 0)
-            start_pos = QPoint(0, -h)
-        else:  # down
-            end_pos = QPoint(0, 0)
-            start_pos = QPoint(0, h)
-        
-        widget.move(start_pos)
-        anim = QPropertyAnimation(widget, b"pos")
-        anim.setDuration(duration)
-        anim.setStartValue(start_pos)
-        anim.setEndValue(end_pos)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.start()
-        return anim
-
-    @staticmethod
-    def stagger_show(widgets: List[QWidget], delay: int = 50, duration: int = 250):
-        for i, w in enumerate(widgets):
-            QTimer.singleShot(i * delay, lambda ww=w: Anim.fade_in(ww, duration))
-
-    @staticmethod
-    def pulse(widget: QWidget, color: QColor, duration: int = 1000):
-        """Pulse border glow"""
-        original_style = widget.styleSheet()
-        # Would need custom paintEvent for true pulse - simplified here
-
-
-def add_shadow(widget, color=None, blur=36, x_offset=0, y_offset=10):
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(blur)
-    shadow.setXOffset(x_offset)
-    shadow.setYOffset(y_offset)
-    shadow.setColor(color if color is not None else QColor(0, 0, 0, 180))
-    widget.setGraphicsEffect(shadow)
-
-
-# =============================================================================
-# 🧱 UI BUILDING BLOCKS
-# =============================================================================
-def make_section_heading(text: str, theme: ThemeColors) -> QLabel:
-    lbl = QLabel(text)
-    lbl.setProperty("class", "Heading")
-    return lbl
-
-
-def make_divider(theme: ThemeColors) -> QFrame:
-    line = QFrame()
-    line.setProperty("class", "Divider")
-    return line
-
-
-def set_active(btn: QPushButton, active: bool):
-    btn.setProperty("active", "true" if active else "false")
-    btn.style().unpolish(btn)
-    btn.style().polish(btn)
-
-
-def wrap_scroll(content_widget: QWidget, theme: ThemeColors) -> QScrollArea:
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-    scroll.viewport().setStyleSheet("background: transparent;")
-    scroll.setWidget(content_widget)
-    return scroll
-
-
-# =============================================================================
-# 🧩 SLIDING STACK (with swipe + wheel)
-# =============================================================================
-class SlidingStack(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.pages = []
-        self.current_index = 0
-        self.animating = False
-        self._dragging = False
-        self._drag_start_x = 0
-        self._drag_dx = 0
-        self._anim_group = None
-        self.on_index_changed = None
-        self._wheel_accum_x = 0.0
-        self._wheel_cooldown = False
-
-    def add_page(self, widget):
-        widget.setParent(self)
-        idx = len(self.pages)
-        self.pages.append(widget)
-        widget.show() if idx == self.current_index else widget.hide()
-        self._reposition_all()
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.Wheel:
-            dx = event.angleDelta().x()
-            if dx == 0:
-                dx = event.pixelDelta().x()
-            if dx != 0:
-                self._handle_wheel_delta(dx, event)
-                return True
-        return super().eventFilter(obj, event)
-
-    def _reposition_all(self):
-        w, h = max(1, self.width()), max(1, self.height())
-        for i, page in enumerate(self.pages):
-            if i == self.current_index:
-                page.setGeometry(0, 0, w, h)
-            elif i < self.current_index:
-                page.setGeometry(-w, 0, w, h)
-            else:
-                page.setGeometry(w, 0, w, h)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if not self.animating and not self._dragging:
-            self._reposition_all()
-
-    def slide_to(self, index):
-        if self.animating or index == self.current_index or not (0 <= index < len(self.pages)):
-            return
-        self.animating = True
-        direction = 1 if index > self.current_index else -1
-        old_widget = self.pages[self.current_index]
-        new_widget = self.pages[index]
-        w, h = self.width(), self.height()
-
-        new_widget.setGeometry(direction * w, 0, w, h)
-        new_widget.show()
-        new_widget.raise_()
-
-        anim_old = QPropertyAnimation(old_widget, b"pos")
-        anim_old.setDuration(320)
-        anim_old.setStartValue(QPoint(0, 0))
-        anim_old.setEndValue(QPoint(-direction * w, 0))
-        anim_old.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        anim_new = QPropertyAnimation(new_widget, b"pos")
-        anim_new.setDuration(320)
-        anim_new.setStartValue(QPoint(direction * w, 0))
-        anim_new.setEndValue(QPoint(0, 0))
-        anim_new.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        self._anim_group = QParallelAnimationGroup()
-        self._anim_group.addAnimation(anim_old)
-        self._anim_group.addAnimation(anim_new)
-
-        def on_finished():
-            old_widget.hide()
-            old_widget.move(0, 0)
-            self.current_index = index
-            self.animating = False
-            self._reposition_all()
-            if self.on_index_changed:
-                self.on_index_changed(index)
-
-        self._anim_group.finished.connect(on_finished)
-        self._anim_group.start()
-
-    def mousePressEvent(self, event):
-        if self.animating:
-            return
-        self._drag_start_x = event.position().x()
-        self._dragging = True
-        self._drag_dx = 0
-
-    def mouseMoveEvent(self, event):
-        if not self._dragging or self.animating:
-            return
-        dx = event.position().x() - self._drag_start_x
-        self._drag_dx = dx
-        w, h = self.width(), self.height()
-        current = self.pages[self.current_index]
-        current.move(int(dx), 0)
-
-        if dx < 0 and self.current_index < len(self.pages) - 1:
-            nxt = self.pages[self.current_index + 1]
-            nxt.setGeometry(w + int(dx), 0, w, h)
-            nxt.show()
-        elif dx > 0 and self.current_index > 0:
-            prv = self.pages[self.current_index - 1]
-            prv.setGeometry(-w + int(dx), 0, w, h)
-            prv.show()
-
-    def mouseReleaseEvent(self, event):
-        if not self._dragging:
-            return
-        self._dragging = False
-        dx = self._drag_dx
-        w = self.width()
-        threshold = w * 0.2
-
-        if dx <= -threshold and self.current_index < len(self.pages) - 1:
-            self._drag_finish(self.current_index + 1, 1)
-        elif dx >= threshold and self.current_index > 0:
-            self._drag_finish(self.current_index - 1, -1)
-        else:
-            self._snap_back()
-
-    def wheelEvent(self, event):
-        dx = event.angleDelta().x()
-        if dx == 0:
-            dx = event.pixelDelta().x()
-        if dx == 0:
-            event.ignore()
-            return
-        self._handle_wheel_delta(dx, event)
-
-    def _handle_wheel_delta(self, dx, event):
-        if self.animating or self._dragging:
-            event.accept()
-            return
-        if self._wheel_cooldown:
-            event.accept()
-            return
-        self._wheel_accum_x += dx
-        threshold = 90
-        if self._wheel_accum_x >= threshold:
-            self._wheel_trigger(go_next=True)
-        elif self._wheel_accum_x <= -threshold:
-            self._wheel_trigger(go_next=False)
-        event.accept()
-
-    def _wheel_trigger(self, go_next):
-        self._wheel_accum_x = 0.0
-        self._wheel_cooldown = True
-        QTimer.singleShot(450, self._reset_wheel_cooldown)
-        if go_next and self.current_index < len(self.pages) - 1:
-            self.slide_to(self.current_index + 1)
-        elif not go_next and self.current_index > 0:
-            self.slide_to(self.current_index - 1)
-
-    def _reset_wheel_cooldown(self):
-        self._wheel_cooldown = False
-        self._wheel_accum_x = 0.0
-
-    def _drag_finish(self, new_index, direction):
-        self.animating = True
-        old_widget = self.pages[self.current_index]
-        new_widget = self.pages[new_index]
-        w = self.width()
-
-        anim_old = QPropertyAnimation(old_widget, b"pos")
-        anim_old.setDuration(220)
-        anim_old.setStartValue(old_widget.pos())
-        anim_old.setEndValue(QPoint(-direction * w, 0))
-        anim_old.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        anim_new = QPropertyAnimation(new_widget, b"pos")
-        anim_new.setDuration(220)
-        anim_new.setStartValue(new_widget.pos())
-        anim_new.setEndValue(QPoint(0, 0))
-        anim_new.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        self._anim_group = QParallelAnimationGroup()
-        self._anim_group.addAnimation(anim_old)
-        self._anim_group.addAnimation(anim_new)
-
-        def on_finished():
-            old_widget.hide()
-            self.current_index = new_index
-            self.animating = False
-            self._reposition_all()
-            if self.on_index_changed:
-                self.on_index_changed(new_index)
-
-        self._anim_group.finished.connect(on_finished)
-        self._anim_group.start()
-
-    def _snap_back(self):
-        self.animating = True
-        current = self.pages[self.current_index]
-        anim = QPropertyAnimation(current, b"pos")
-        anim.setDuration(200)
-        anim.setStartValue(current.pos())
-        anim.setEndValue(QPoint(0, 0))
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        def on_finished():
-            self.animating = False
-            self._reposition_all()
-
-        anim.finished.connect(on_finished)
-        self._anim_group = anim
-        anim.start()
-
-
-# =============================================================================
-# 📊 CIRCULAR GAUGE + SPARKLINE
-# =============================================================================
-class CircularGauge(QWidget):
-    def __init__(self, color="#00D4AA", thickness=8, parent=None):
-        super().__init__(parent)
-        self._value = 0.0
-        self._color = QColor(color)
-        self._track_color = QColor("#2A2A2A")
-        self._thickness = thickness
-        self._suffix = "%"
-        self.setMinimumSize(64, 64)
-
-    def setValue(self, value):
-        try:
-            value = float(value)
-        except (TypeError, ValueError):
-            value = 0.0
-        value = max(0.0, min(100.0, value))
-        if value != self._value:
-            self._value = value
-            self.update()
-
-    def setColor(self, color):
-        self._color = QColor(color)
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        side = min(self.width(), self.height())
-        margin = self._thickness / 2 + 3
-        rect = QRectF(0, 0, side - 2 * margin, side - 2 * margin)
-        rect.moveCenter(QRectF(0, 0, self.width(), self.height()).center())
-
-        pen_track = QPen(self._track_color)
-        pen_track.setWidthF(self._thickness)
-        pen_track.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen_track)
-        painter.drawArc(rect, 0, 360 * 16)
-
-        if self._value > 0:
-            pen_val = QPen(self._color)
-            pen_val.setWidthF(self._thickness)
-            pen_val.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(pen_val)
-            span = int(-(self._value / 100.0) * 360 * 16)
-            painter.drawArc(rect, 90 * 16, span)
-
-        painter.setPen(QColor("#FFFFFF"))
-        font = QFont("Segoe UI", max(8, side // 7), QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, f"{int(round(self._value))}{self._suffix}")
-
-
-class Sparkline(QWidget):
-    def __init__(self, color="#00D4AA", max_points=60, parent=None):
-        super().__init__(parent)
-        self.data = deque([0.0] * max_points, maxlen=max_points)
-        self.color = QColor(color)
-        self.setFixedHeight(36)
-        self.setMinimumWidth(100)
-
-    def add_value(self, value: float):
-        self.data.append(max(0.0, min(100.0, value)))
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        if len(self.data) < 2:
-            return
-
-        w, h = self.width(), self.height()
-        margin = 4
-        x_step = (w - 2 * margin) / (len(self.data) - 1)
-        points = []
-
-        for i, val in enumerate(self.data):
-            x = margin + i * x_step
-            y = h - margin - (val / 100.0) * (h - 2 * margin)
-            points.append(QPointF(x, y))
-
-        # Gradient fill under line
-        grad = QLinearGradient(0, h, 0, 0)
-        c_start = QColor(self.color); c_start.setAlpha(60)
-        c_end = QColor(self.color); c_end.setAlpha(0)
-        grad.setColorAt(0, c_start)
-        grad.setColorAt(1, c_end)
-        painter.setBrush(QBrush(grad))
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        poly = QPolygonF(points)
-        poly.append(QPointF(points[-1].x(), h - margin))
-        poly.append(QPointF(points[0].x(), h - margin))
-        painter.drawPolygon(poly)
-
-        # Line
-        pen = QPen(self.color)
-        pen.setWidth(2)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        for i in range(len(points) - 1):
-            painter.drawLine(points[i], points[i + 1])
-
-
-# =============================================================================
-# 🎵 AUDIO VISUALIZER
-# =============================================================================
-class AudioVisualizer(QFrame):
-    def __init__(self, theme: ThemeColors):
-        super().__init__()
-        self._theme = theme
-        self.setFixedHeight(40)
-        self.mode = "SLEEPING"
-        self.bar_width = 3.0
-        self.spacing = 3.0
-        self.heights = []
-        self.targets = []
-        self.phase = 0.0
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(40)
-
-    def set_mode(self, mode):
-        self.mode = mode
-
-    def _bar_count(self):
-        step = self.bar_width + self.spacing
-        return max(1, int(self.width() // step))
-
-    def _sync_lists(self, n):
-        if len(self.heights) != n:
-            self.heights = [3.0] * n
-            self.targets = [3.0] * n
-
-    def _tick(self):
-        n = self._bar_count()
-        self._sync_lists(n)
-        self.phase += 0.18
-        max_h = max(6.0, self.height() - 6.0)
-
-        for i in range(n):
-            if self.mode == "LISTENING":
-                if random.random() < 0.16:
-                    self.targets[i] = random.uniform(5, max_h * 0.55)
-                target = self.targets[i]
-            elif self.mode == "SPEAKING":
-                if random.random() < 0.26:
-                    self.targets[i] = random.uniform(8, max_h)
-                target = self.targets[i]
-            elif self.mode == "PLAYING":
-                if random.random() < 0.22:
-                    self.targets[i] = random.uniform(6, max_h * 0.85)
-                target = self.targets[i]
-            else:
-                target = 3 + 3 * (0.5 + 0.5 * math.sin(self.phase + i * 0.4))
-
-            self.heights[i] += (target - self.heights[i]) * 0.3
-
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        n = len(self.heights)
-        if n == 0:
-            return
-
-        step = self.bar_width + self.spacing
-        total_w = n * step - self.spacing
-        start_x = (self.width() - total_w) / 2.0
-        mid_y = self.height() / 2.0
-
-        if self.mode == "LISTENING":
-            c1, c2 = QColor(self._theme.accent_2), QColor(self._theme.accent_1)
-        elif self.mode == "SPEAKING":
-            c1, c2 = QColor(self._theme.accent_1), QColor(self._theme.accent_3)
-        elif self.mode == "PLAYING":
-            c1, c2 = QColor(self._theme.success), QColor(self._theme.accent_2)
-        else:
-            c1, c2 = QColor("#1A1A1A"), QColor("#2A2A2A")
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i in range(n):
-            t = i / max(1, n - 1)
-            color = self._lerp_color(c1, c2, t)
-            hgt = self.heights[i]
-            x = start_x + i * step
-            y = mid_y - hgt / 2.0
-            painter.setBrush(color)
-            painter.drawRoundedRect(QRectF(x, y, self.bar_width, hgt), 1.5, 1.5)
-
-    @staticmethod
-    def _lerp_color(c1, c2, t):
-        r = c1.red() + (c2.red() - c1.red()) * t
-        g = c1.green() + (c2.green() - c1.green()) * t
-        b = c1.blue() + (c2.blue() - c1.blue()) * t
-        return QColor(int(r), int(g), int(b))
-
-
-# =============================================================================
-# 💿 ALBUM ART DISC
-# =============================================================================
-class AlbumArtDisc(QWidget):
-    def __init__(self, theme: ThemeColors, size=76):
-        super().__init__()
-        self._theme = theme
-        self.setFixedSize(size, size)
-        self.angle = 0
-        self.spinning = False
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(50)
-
-    def set_spinning(self, spinning):
-        self.spinning = spinning
-
-    def _tick(self):
-        if self.spinning:
-            self.angle = (self.angle + 3) % 360
-            self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-        painter.translate(cx, cy)
-        painter.rotate(self.angle)
-        painter.translate(-cx, -cy)
-
-        rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
-        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        grad.setColorAt(0, QColor(self._theme.accent_1))
-        grad.setColorAt(1, QColor(self._theme.accent_2))
-        painter.setBrush(QBrush(grad))
-        painter.drawEllipse(rect)
-
-        painter.setPen(QPen(QColor(255, 255, 255, 30), 1))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        for frac in (0.34, 0.25, 0.17):
-            rr = rect.width() * frac
-            painter.drawEllipse(QRectF(cx - rr, cy - rr, rr * 2, rr * 2))
-
-        center_r = rect.width() * 0.14
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(self._theme.bg_main))
-        painter.drawEllipse(QRectF(cx - center_r, cy - center_r, center_r * 2, center_r * 2))
-        hole_r = center_r * 0.3
-        painter.setBrush(QColor(self._theme.text_main))
-        painter.drawEllipse(QRectF(cx - hole_r, cy - hole_r, hole_r * 2, hole_r * 2))
-
-
-# =============================================================================
-# 🏷️ BRAND ICON
-# =============================================================================
-class BrandIcon(QWidget):
-    def __init__(self, theme: ThemeColors, size=52):
-        super().__init__()
-        self._theme = theme
-        self.setFixedSize(size, int(size * 0.86))
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        w, h = self.width(), self.height()
-        tail_h = h * 0.22
-        body = QRectF(0, 0, w, h - tail_h)
-        grad = QLinearGradient(body.topLeft(), body.bottomRight())
-        grad.setColorAt(0, QColor(self._theme.accent_1))
-        grad.setColorAt(1, QColor(self._theme.accent_2))
-        painter.setBrush(QBrush(grad))
-        painter.drawRoundedRect(body, w * 0.26, w * 0.26)
-
-        tail = QPolygonF([
-            QPointF(w * 0.20, body.bottom() - 3),
-            QPointF(w * 0.40, body.bottom() - 3),
-            QPointF(w * 0.20, h),
-        ])
-        painter.drawPolygon(tail)
-
-        painter.setBrush(QColor(255, 255, 255, 235))
-        dot_r = w * 0.045
-        cy = body.center().y()
-        for dx in (-0.16, 0.0, 0.16):
-            cx = body.center().x() + w * dx
-            painter.drawEllipse(QRectF(cx - dot_r, cy - dot_r, dot_r * 2, dot_r * 2))
-
-
-# =============================================================================
-# 💬 CHAT BUBBLE (with reactions, code highlight, copy)
-# =============================================================================
-class ChatBubble(QWidget):
-    TAIL = 9
-    REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"]
-
-    def __init__(self, text: str, is_user: bool, max_width: int = 420,
-                 on_replay: Callable = None, on_reaction: Callable = None,
-                 theme: ThemeColors = None, parent=None, attachment: dict = None):
-        super().__init__(parent)
-        self.is_user = is_user
-        self._theme = theme or ThemeColors()
-        self._on_reaction = on_reaction
-        self._reaction_counts = {r: 0 for r in self.REACTIONS}
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-
-        # Bubble content
-        bubble_wrap = QWidget()
-        bw = QHBoxLayout(bubble_wrap)
-        bw.setContentsMargins(0, 0, 0, 0)
-        bw.setSpacing(0)
-
-        if is_user:
-            bw.addStretch()
-
-        self.bubble_inner = QWidget()
-        self.bubble_inner.setStyleSheet("background: transparent;")
-        bi = QVBoxLayout(self.bubble_inner)
-        bi.setContentsMargins(14, 10, 14, 8)
-        bi.setSpacing(6)
-
-        # Attachment preview (image thumbnail or document chip), above the text
-        if attachment:
-            bi.addWidget(self._build_attachment_widget(attachment))
-
-        has_text = bool(text and text.strip())
-        text_color = '#000000' if is_user else self._theme.text_main
-
-        # Message text with markdown/code support
-        self.text_browser = QTextBrowser()
-        self.text_browser.setOpenExternalLinks(True)
-        self.text_browser.setReadOnly(True)
-        self.text_browser.setFrameShape(QFrame.Shape.NoFrame)
-        self.text_browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.text_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.text_browser.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.text_browser.setStyleSheet(f"""
-            background: transparent; 
-            color: {text_color}; 
-            font-size: 14px; 
-            border: none;
-            selection-background-color: {self._theme.accent_1}80;
-        """)
-        self.text_browser.document().setDefaultStyleSheet(self._document_css(text_color))
-        self.text_browser.setHtml(self._format_message(text) if has_text else "")
-        if has_text:
-            self._size_text_browser(max_width)
-        bi.addWidget(self.text_browser)
-        if not has_text and is_user:
-            # Image/doc attached with no caption - keep the widget alive (so
-            # code elsewhere that reads bubble.text_browser never breaks) but
-            # collapse it to zero space instead of showing an empty box.
-            self.text_browser.setVisible(False)
-            self.text_browser.setMaximumHeight(0)
-
-        # Timestamp + reactions
-        stamp_row = QHBoxLayout()
-        stamp_row.setSpacing(8)
-        stamp = QLabel(time.strftime("%I:%M %p"))
-        stamp_color = "rgba(0,0,0,0.5)" if is_user else self._theme.text_faint
-        stamp.setStyleSheet(f"background: transparent; color: {stamp_color}; font-size: 10px;")
-
-        if not is_user:
-            # Reactions bar
-            self.reaction_btns = {}
-            for react in self.REACTIONS:
-                btn = QPushButton(react)
-                btn.setFixedSize(22, 22)
-                btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                btn.setStyleSheet(f"""
-                    background: transparent; border: none; font-size: 11px; padding: 0px;
-                    color: {self._theme.text_faint};
-                """)
-                btn.clicked.connect(partial(self._emit_reaction, react))
-                self.reaction_btns[react] = btn
-                stamp_row.addWidget(btn)
-
-        if is_user:
-            check = QLabel("✓✓")
-            check.setStyleSheet("background: transparent; color: #006B5A; font-size: 10px; font-weight: 700;")
-            stamp_row.addStretch()
-            stamp_row.addWidget(stamp)
-            stamp_row.addWidget(check)
-        else:
-            stamp_row.addWidget(stamp)
-            if on_replay:
-                replay_btn = QPushButton("🔊")
-                replay_btn.setToolTip("Read aloud")
-                replay_btn.setFixedSize(18, 18)
-                replay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                replay_btn.setStyleSheet(f"background: transparent; border: none; font-size: 10px; color: {self._theme.text_faint}; padding: 0px;")
-                replay_btn.clicked.connect(lambda: on_replay(text))
-                stamp_row.addWidget(replay_btn)
-            stamp_row.addStretch()
-
-        bi.addLayout(stamp_row)
-
-        # Copy button (hover only)
-        self.copy_btn = QPushButton("📋")
-        self.copy_btn.setFixedSize(24, 24)
-        self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.copy_btn.setStyleSheet(f"""
-            background: {self._theme.accent_1}; color: #000000; border: none; border-radius: 4px; font-size: 11px;
-        """)
-        self.copy_btn.clicked.connect(lambda: pyperclip.copy(text) if HAS_PYPERCLIP else None)
-        self.copy_btn.hide()
-        bi.addWidget(self.copy_btn, 0, Qt.AlignmentFlag.AlignRight)
-
-        bw.addWidget(self.bubble_inner)
-
-        if not is_user:
-            bw.addStretch()
-
-        outer.addWidget(bubble_wrap)
-
-        self.setMaximumWidth(max_width)
-        self.setMouseTracking(True)
-        self.bubble_inner.enterEvent = lambda e: self.copy_btn.show()
-        self.bubble_inner.leaveEvent = lambda e: self.copy_btn.hide()
-
-    def _size_text_browser(self, max_width: int):
-        """QTextBrowser doesn't automatically resize itself to fit its
-        content, and Qt doesn't always have the widget's real font ready the
-        instant it's constructed (the stylesheet gets "polished" onto it a
-        moment later) - so measuring once, synchronously, here could end up
-        a line short of the real layout once that font kicks in, cutting
-        off the end of longer replies. This measures immediately for a
-        reasonable first size, then re-measures once more on the next
-        event-loop tick (after polishing has happened) to correct it."""
-        available = max(80, max_width - 34)  # bubble_inner's 14px+14px side margins, plus a small buffer
-        tb = self.text_browser
-        doc = tb.document()
-
-        def _apply():
-            try:
-                doc.setTextWidth(-1)
-                ideal = doc.idealWidth()
-                # A generous buffer matters here - too little of one can leave
-                # the box just narrow enough to force an extra, unplanned wrap,
-                # and then the (now too-short) fixed height clips that text.
-                width = min(available, max(60, int(ideal) + 24))
-                doc.setTextWidth(width)
-                height = doc.size().height()
-                tb.setFixedWidth(width)
-                tb.setFixedHeight(int(height) + 10)
-            except RuntimeError:
-                pass  # bubble was closed/destroyed before this ran
-
-        _apply()
-        QTimer.singleShot(0, _apply)
-
-    def _build_attachment_widget(self, attachment: dict) -> QWidget:
-        """A small preview shown inside the bubble above the message text:
-        a rounded thumbnail for images, or a file chip (icon+name+size) for
-        documents/PDFs/text files."""
-        if attachment.get("kind") == "image":
-            lbl = QLabel()
-            pix = QPixmap(attachment.get("path", ""))
-            if not pix.isNull():
-                scaled = pix.scaled(260, 260, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                lbl.setPixmap(scaled)
-                lbl.setFixedSize(scaled.size())
-            else:
-                lbl.setText("🖼 (image unavailable)")
-                lbl.setStyleSheet(f"background: transparent; color: {'#000000' if self.is_user else self._theme.text_muted}; font-size: 12px;")
-            lbl.setStyleSheet(lbl.styleSheet() + " background: transparent; border-radius: 10px;")
-            return lbl
-
-        chip = QWidget()
-        chip.setStyleSheet(f"background: rgba(255,255,255,{0.16 if self.is_user else 0.06}); border-radius: 10px;")
-        cl = QHBoxLayout(chip)
-        cl.setContentsMargins(10, 8, 10, 8)
-        cl.setSpacing(8)
-        is_pdf = attachment.get("name", "").lower().endswith(".pdf")
-        icon_lbl = QLabel("📕" if is_pdf else "📄")
-        icon_lbl.setStyleSheet("background: transparent; font-size: 18px;")
-        text_col = QVBoxLayout()
-        text_col.setSpacing(0)
-        name_color = "#000000" if self.is_user else self._theme.text_main
-        name_lbl = QLabel(attachment.get("name", "file"))
-        name_lbl.setStyleSheet(f"background: transparent; color: {name_color}; font-size: 12px; font-weight: 700;")
-        kb = attachment.get("size_bytes", 0) / 1024
-        size_text = f"{kb / 1024:.1f} MB" if kb > 1024 else f"{kb:.0f} KB"
-        meta_color = "rgba(0,0,0,0.55)" if self.is_user else self._theme.text_faint
-        meta_lbl = QLabel(size_text)
-        meta_lbl.setStyleSheet(f"background: transparent; color: {meta_color}; font-size: 10px;")
-        text_col.addWidget(name_lbl)
-        text_col.addWidget(meta_lbl)
-        cl.addWidget(icon_lbl)
-        cl.addLayout(text_col, 1)
-        return chip
-
-    def _document_css(self, text_color: str) -> str:
-        """Default stylesheet for the rendered-markdown QTextDocument: styles
-        tables, fenced code blocks, headers, lists and blockquotes so they
-        look intentional against the bubble's dark/accent background instead
-        of Qt's bare default rich-text styling."""
-        accent = self._theme.accent_1
-        border = "rgba(0,0,0,0.18)" if self.is_user else self._theme.border
-        code_bg = "rgba(0,0,0,0.16)" if self.is_user else "#1E1E1E"
-        code_border = "rgba(0,0,0,0.22)" if self.is_user else self._theme.border_soft
-        th_bg = "rgba(0,0,0,0.12)" if self.is_user else "rgba(255,255,255,0.06)"
-        quote_color = "rgba(0,0,0,0.65)" if self.is_user else self._theme.text_muted
-        return f"""
-            body, p {{ color: {text_color}; margin: 0 0 6px 0; }}
-            h1, h2, h3 {{ color: {text_color}; margin: 6px 0 4px 0; font-weight: 800; }}
-            h1 {{ font-size: 17px; }}
-            h2 {{ font-size: 15.5px; }}
-            h3 {{ font-size: 14.5px; }}
-            ul, ol {{ margin: 2px 0 8px 18px; padding: 0px; }}
-            li {{ margin: 2px 0; }}
-            a {{ color: {accent}; }}
-            blockquote {{ border-left: 3px solid {accent}; margin: 6px 0; padding: 2px 0 2px 10px; color: {quote_color}; }}
-            table {{ border-collapse: collapse; margin: 6px 0; }}
-            th, td {{ border: 1px solid {border}; padding: 4px 9px; }}
-            th {{ background: {th_bg}; font-weight: 700; }}
-            code {{ background: {code_bg}; padding: 1px 5px; border-radius: 4px; font-family: Consolas, monospace; font-size: 12.5px; }}
-            pre {{ background: {code_bg}; border: 1px solid {code_border}; border-radius: 8px; padding: 10px 12px; margin: 6px 0; }}
-            pre code {{ background: transparent; padding: 0px; }}
-        """
-
-    def _format_message(self, text: str) -> str:
-        """Render chat text as HTML. Uses full Markdown (tables, bold/italic,
-        headers, lists, blockquotes) when the `markdown` package is
-        installed, with fenced code blocks syntax-highlighted via Pygments.
-        Falls back to a simpler code-block-only renderer, then to plain
-        escaped text, if those packages aren't available."""
-        if HAS_MARKDOWN:
-            try:
-                extensions = ['fenced_code', 'tables', 'nl2br', 'sane_lists']
-                extension_configs = {}
-                if HAS_PYGMENTS:
-                    extensions.append('codehilite')
-                    extension_configs['codehilite'] = {
-                        'noclasses': True, 'pygments_style': 'monokai', 'guess_lang': False,
-                    }
-                body = _markdown_lib.markdown(text, extensions=extensions, extension_configs=extension_configs)
-                return f'<div style="line-height:1.5;">{body}</div>'
-            except Exception:
-                pass  # fall through to the simpler renderers below
-
-        if not HAS_PYGMENTS:
-            # Simple escape
-            escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            return f'<div style="line-height:1.5;">{escaped.replace(chr(10), "<br>")}</div>'
-
-        # Simple markdown code block parsing (no `markdown` package installed)
-        parts = []
-        in_code = False
-        code_lang = "text"
-        code_buffer = []
-        
-        lines = text.split("\n")
-        for line in lines:
-            if line.strip().startswith("```"):
-                if not in_code:
-                    in_code = True
-                    code_lang = line.strip()[3:].strip() or "text"
-                    code_buffer = []
-                else:
-                    in_code = False
-                    code_text = "\n".join(code_buffer)
-                    try:
-                        lexer = get_lexer_by_name(code_lang)
-                    except Exception:
-                        lexer = TextLexer()
-                    formatter = HtmlFormatter(style="monokai", nowrap=True, noclasses=True)
-                    highlighted = highlight(code_text, lexer, formatter)
-                    parts.append(f'<pre><code>{highlighted}</code></pre>')
-            elif in_code:
-                code_buffer.append(line)
-            else:
-                escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                escaped = re.sub(r'`([^`]+)`', r'<code>\1</code>', escaped)
-                parts.append(escaped)
-        
-        if in_code and code_buffer:
-            code_text = "\n".join(code_buffer)
-            try:
-                lexer = get_lexer_by_name(code_lang)
-            except Exception:
-                lexer = TextLexer()
-            formatter = HtmlFormatter(style="monokai", nowrap=True, noclasses=True)
-            highlighted = highlight(code_text, lexer, formatter)
-            parts.append(f'<pre><code>{highlighted}</code></pre>')
-
-        html = "<br>".join(parts)
-        return f'<div style="line-height:1.5;">{html}</div>'
-
-    def _emit_reaction(self, reaction: str):
-        if self._on_reaction:
-            self._on_reaction(reaction)
-
-    def set_reaction_count(self, reaction: str, count: int):
-        if reaction in self.reaction_btns:
-            self._reaction_counts[reaction] = count
-            btn = self.reaction_btns[reaction]
-            btn.setText(f"{reaction} {count}" if count > 0 else reaction)
-            btn.setStyleSheet(f"""
-                background: {'rgba(0,212,170,0.2)' if count > 0 else 'transparent'};
-                border: {f'1px solid {self._theme.accent_1}' if count > 0 else 'none'};
-                border-radius: 11px; font-size: 11px; padding: 0px 4px;
-                color: {self._theme.accent_1 if count > 0 else self._theme.text_faint};
-            """)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        r = 15.0
-        tw = float(self.TAIL)
-        rect = self.rect()
-        h = rect.height()
-
-        # Find bubble_inner geometry
-        inner_rect = self.bubble_inner.geometry()
-        bx, by = inner_rect.x(), inner_rect.y()
-        bw, bh = inner_rect.width(), inner_rect.height()
-
-        if self.is_user:
-            body = QRectF(bx, by, bw - tw, bh)
-            painter.setBrush(QColor(self._theme.bubble_sent))
-            painter.drawRoundedRect(body, r, r)
-            tail = QPolygonF([
-                QPointF(body.right() - 9, bh - 19),
-                QPointF(body.right() + tw - 1, bh - 9),
-                QPointF(body.right() - 9, bh - 1),
-            ])
-            painter.drawPolygon(tail)
-        else:
-            body = QRectF(bx + tw, by, bw - tw, bh)
-            painter.setBrush(QColor(self._theme.bubble_recv))
-            painter.drawRoundedRect(body, r, r)
-            tail = QPolygonF([
-                QPointF(body.left() + 9, bh - 19),
-                QPointF(body.left() - tw + 1, bh - 9),
-                QPointF(body.left() + 9, bh - 1),
-            ])
-            painter.drawPolygon(tail)
-
-
-# =============================================================================
-# ⌨️ CHAT INPUT BOX (auto-growing, Enter to send / Shift+Enter for newline)
-# =============================================================================
-class ChatInputBox(QTextEdit):
-    """A QLineEdit can only ever hold one line, so the placeholder's promise
-    of 'Shift+Enter for a new line' never actually worked. This is a
-    QTextEdit that grows with its content up to a max height, sends on a
-    plain Enter, and inserts a real newline on Shift+Enter."""
-    send_requested = pyqtSignal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("ChatInputBox")
-        self.setAcceptRichText(False)
-        self.setPlaceholderText("Message W.A.V.E... (Enter to send, Shift+Enter for new line)")
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
-        self._min_h = 44
-        self._max_h = 132
-        self.setFixedHeight(self._min_h)
-        self.textChanged.connect(self._auto_grow)
-
-    def _auto_grow(self):
-        doc_h = int(self.document().size().height()) + 16
-        new_h = max(self._min_h, min(self._max_h, doc_h))
-        if new_h != self.height():
-            self.setFixedHeight(new_h)
-
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                super().keyPressEvent(event)  # Shift+Enter -> real newline
-            else:
-                self.send_requested.emit()  # Enter -> send
-            return
-        super().keyPressEvent(event)
-
-
-# =============================================================================
-# 🧱 DASHBOARD TILE (with live preview)
-# =============================================================================
-class DashboardTile(QFrame):
-    clicked = pyqtSignal()
-
-    def __init__(self, icon_ch: str, label: str, theme: ThemeColors, parent=None):
-        super().__init__(parent)
-        self._theme = theme
-        self.setProperty("class", "Panel")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(150)
-        add_shadow(self, blur=24, y_offset=6)
-        v = QVBoxLayout(self)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(0)
-
-        title_bar = QWidget()
-        title_bar.setFixedHeight(34)
-        title_bar.setStyleSheet(
-            f"background-color: rgba(255,255,255,0.05); "
-            "border-top-left-radius: 22px; border-top-right-radius: 22px;"
-        )
-        tb = QHBoxLayout(title_bar)
-        tb.setContentsMargins(12, 0, 10, 0)
-        tb.setSpacing(8)
-        icon_lbl = QLabel(icon_ch)
-        icon_lbl.setStyleSheet("font-size: 13px; background: transparent;")
-        tb.addWidget(icon_lbl)
-        text_lbl = QLabel(label)
-        text_lbl.setStyleSheet(f"color: {theme.text_main}; font-size: 11.5px; font-weight: 700; background: transparent;")
-        tb.addWidget(text_lbl)
-        tb.addStretch()
-        v.addWidget(title_bar)
-
-        self.preview_lbl = QLabel()
-        self.preview_lbl.setMinimumHeight(116)
-        self.preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_lbl.setStyleSheet(
-            f"background: rgba(0,0,0,0.3); "
-            "border-bottom-left-radius: 22px; border-bottom-right-radius: 22px;"
-        )
-        v.addWidget(self.preview_lbl, 1)
-
-    def set_preview(self, pixmap):
-        if pixmap and not pixmap.isNull():
-            scaled = pixmap.scaled(
-                self.preview_lbl.size(),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.preview_lbl.setPixmap(scaled)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-    def enterEvent(self, event):
-        self.setGraphicsEffect(None)
-        glow = QColor(self._theme.accent_1)
-        glow.setAlpha(100)
-        add_shadow(self, color=glow, blur=30, y_offset=8)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.setGraphicsEffect(None)
-        add_shadow(self, blur=24, y_offset=6)
-        super().leaveEvent(event)
-
-
-# =============================================================================
-# 🔍 COMMAND PALETTE (Ctrl+K)
-# =============================================================================
-class CommandPalette(QDialog):
-    def __init__(self, parent, theme: ThemeColors, actions: Dict[str, Callable]):
-        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
-        self._theme = theme
-        self._actions = actions
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setModal(True)
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Container with panel styling
-        container = QFrame()
-        container.setProperty("class", "Panel")
-        container.setFixedWidth(640)
-        add_shadow(container, blur=40, y_offset=20)
-        cl = QVBoxLayout(container)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(0)
-        
-        # Input
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("Type a command, app, or action... (Ctrl+K to close)")
-        self.input.setStyleSheet(f"""
-            background: {theme.bg_surface}; color: {theme.text_main};
-            border: none; border-radius: 0; padding: 16px 20px; font-size: 16px;
-            border-bottom: 1px solid {theme.border};
-        """)
-        self.input.textChanged.connect(self._filter)
-        self.input.installEventFilter(self)
-        cl.addWidget(self.input)
-        
-        # Results list
-        self.list = QListWidget()
-        self.list.setStyleSheet(f"""
-            QListWidget {{ background: transparent; border: none; outline: none; }}
-            QListWidget::item {{ padding: 12px 20px; border-radius: 0; color: {theme.text_main}; font-size: 13px; }}
-            QListWidget::item:hover {{ background: rgba(40,40,40,1); }}
-            QListWidget::item:selected {{ background: {theme.accent_1}; color: #000000; }}
-        """)
-        self.list.itemActivated.connect(self._activate)
-        cl.addWidget(self.list)
-        
-        layout.addWidget(container)
-        
-        self._populate_list("")
-        self.input.setFocus()
-    
-    def _populate_list(self, query: str):
-        self.list.clear()
-        query = query.lower().strip()
-        for name, action in self._actions.items():
-            if not query or query in name.lower():
-                item = QListWidgetItem(name)
-                item.setData(Qt.ItemDataRole.UserRole, action)
-                self.list.addItem(item)
-        if self.list.count() > 0:
-            self.list.setCurrentRow(0)
-    
-    def _filter(self, text):
-        self._populate_list(text)
-    
-    def _activate(self, item):
-        action = item.data(Qt.ItemDataRole.UserRole)
-        if action:
-            action()
-        self.accept()
-    
-    def eventFilter(self, obj, event):
-        if obj == self.input and event.type() == QEvent.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
-                if self.list.currentItem():
-                    self._activate(self.list.currentItem())
-                return True
-            elif event.key() == Qt.Key.Key_Down:
-                row = min(self.list.currentRow() + 1, self.list.count() - 1)
-                self.list.setCurrentRow(row)
-                return True
-            elif event.key() == Qt.Key.Key_Up:
-                row = max(self.list.currentRow() - 1, 0)
-                self.list.setCurrentRow(row)
-                return True
-            elif event.key() == Qt.Key.Key_Escape:
-                self.reject()
-                return True
-        return super().eventFilter(obj, event)
-    
-    def showEvent(self, event):
-        super().showEvent(event)
-        # Center on parent
-        if self.parent():
-            parent_rect = self.parent().geometry()
-            x = parent_rect.x() + (parent_rect.width() - self.width()) // 2
-            y = parent_rect.y() + 80
-            self.move(x, y)
-        Anim.fade_in(self.findChild(QFrame), 150)
-
-
-# =============================================================================
-# 🧙 ONBOARDING WIZARD
-# =============================================================================
-class OnboardingWizard(QDialog):
-    def __init__(self, parent, theme: ThemeColors, on_complete: Callable):
-        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self._theme = theme
-        self._on_complete = on_complete
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setModal(True)
-        self.setFixedSize(520, 420)
-        
-        self._steps = [
-            ("Welcome", "Hi! I'm WAVE — your desktop AI assistant.\nLet's get you set up in 30 seconds.", "👋"),
-            ("Microphone", "We need microphone access for voice commands.\nClick 'Test Mic' and say something.", "🎙"),
-            ("Wake Word", "Choose your wake phrase:", "🔊"),
-            ("Theme", "Pick your accent color:", "🎨"),
-            ("Permissions", "Allow these for the best experience:", "🛡"),
-            ("Done", "You're all set! Press <b>Ctrl+Shift+Space</b> anytime to wake me.", "✨"),
-        ]
-        self._current_step = 0
-        
-        self._setup_ui()
-        self._show_step(0)
-    
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        container = QFrame()
-        container.setProperty("class", "Panel")
-        add_shadow(container, blur=40, y_offset=20)
-        cl = QVBoxLayout(container)
-        cl.setContentsMargins(32, 28, 32, 28)
-        cl.setSpacing(20)
-        
-        # Progress dots
-        self.progress_row = QHBoxLayout()
-        self.progress_row.setSpacing(8)
-        self.progress_row.addStretch()
-        self.progress_dots = []
-        for i in range(len(self._steps)):
-            dot = QLabel("●")
-            dot.setFixedSize(12, 12)
-            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            dot.setStyleSheet(f"color: {self._theme.text_faint}; font-size: 10px;")
-            self.progress_dots.append(dot)
-            self.progress_row.addWidget(dot)
-        self.progress_row.addStretch()
-        cl.addLayout(self.progress_row)
-        
-        # Icon
-        self.icon_lbl = QLabel("👋")
-        self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_lbl.setStyleSheet("font-size: 48px; background: transparent;")
-        cl.addWidget(self.icon_lbl)
-        
-        # Title
-        self.title_lbl = QLabel("Welcome")
-        self.title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_lbl.setStyleSheet(f"color: {self._theme.text_main}; font-size: 22px; font-weight: 800; background: transparent;")
-        cl.addWidget(self.title_lbl)
-        
-        # Description
-        self.desc_lbl = QLabel()
-        self.desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.desc_lbl.setWordWrap(True)
-        self.desc_lbl.setStyleSheet(f"color: {self._theme.text_muted}; font-size: 13px; background: transparent; line-height: 1.5;")
-        cl.addWidget(self.desc_lbl)
-        
-        # Dynamic content area
-        self.content_area = QWidget()
-        self.content_layout = QVBoxLayout(self.content_area)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(12)
-        cl.addWidget(self.content_area, 1)
-        
-        # Buttons
-        self.btn_row = QHBoxLayout()
-        self.btn_row.setSpacing(12)
-        self.btn_back = QPushButton("Back")
-        self.btn_back.setProperty("class", "ActionBtn")
-        self.btn_back.clicked.connect(self._go_back)
-        self.btn_next = QPushButton("Next")
-        self.btn_next.setObjectName("SaveBtn")
-        self.btn_next.clicked.connect(self._go_next)
-        self.btn_row.addStretch()
-        self.btn_row.addWidget(self.btn_back)
-        self.btn_row.addWidget(self.btn_next)
-        cl.addLayout(self.btn_row)
-        
-        layout.addWidget(container)
-    
-    def _clear_content(self):
-        while self.content_layout.count():
-            item = self.content_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-    
-    def _show_step(self, index: int):
-        self._current_step = index
-        title, desc, icon = self._steps[index]
-        self.icon_lbl.setText(icon)
-        self.title_lbl.setText(title)
-        self.desc_lbl.setText(desc)
-        
-        # Update progress dots
-        for i, dot in enumerate(self.progress_dots):
-            if i <= index:
-                dot.setStyleSheet(f"color: {self._theme.accent_1}; font-size: 10px;")
-            else:
-                dot.setStyleSheet(f"color: {self._theme.text_faint}; font-size: 10px;")
-        
-        self._clear_content()
-        
-        if index == 1:  # Microphone test
-            self.mic_test_btn = QPushButton("🎙  Test Microphone")
-            self.mic_test_btn.setProperty("class", "ActionBtn")
-            self.mic_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.mic_test_btn.clicked.connect(self._test_mic)
-            self.mic_status = QLabel("Click to test...")
-            self.mic_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.mic_status.setStyleSheet(f"color: {self._theme.text_muted}; font-size: 12px;")
-            self.content_layout.addWidget(self.mic_test_btn)
-            self.content_layout.addWidget(self.mic_status)
-        
-        elif index == 2:  # Wake word
-            self.wake_combo = QComboBox()
-            self.wake_combo.addItems(["Hey Wave", "Hello Wave", "Okay Wave", "Custom..."])
-            self.wake_combo.setStyleSheet(f"padding: 10px; font-size: 13px;")
-            self.content_layout.addWidget(self.wake_combo)
-        
-        elif index == 3:  # Theme
-            self.theme_btns = []
-            for theme_name in ["Black Glass", "Midnight Blue", "Emerald Dark", "Crimson Dark", "Amber Dark"]:
-                btn = QPushButton(theme_name)
-                btn.setProperty("class", "Pill")
-                btn.setCheckable(True)
-                btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                btn.clicked.connect(partial(self._select_theme, theme_name, btn))
-                self.theme_btns.append(btn)
-                self.content_layout.addWidget(btn)
-            # Select current
-            for btn in self.theme_btns:
-                if btn.text() == self.parent().theme_manager.get_current().name:
-                    btn.setChecked(True)
-                    set_active(btn, True)
-        
-        elif index == 4:  # Permissions
-            self.perm_clipboard = QCheckBox("Clipboard history (read copied text)")
-            self.perm_clipboard.setChecked(True)
-            self.perm_screen = QCheckBox("Screen capture (for OCR / vision)")
-            self.perm_screen.setChecked(True)
-            self.perm_notifications = QCheckBox("Desktop notifications")
-            self.perm_notifications.setChecked(True)
-            for cb in [self.perm_clipboard, self.perm_screen, self.perm_notifications]:
-                cb.setStyleSheet(f"color: {self._theme.text_main}; font-size: 12px;")
-                self.content_layout.addWidget(cb)
-        
-        # Update buttons
-        self.btn_back.setVisible(index > 0)
-        if index == len(self._steps) - 1:
-            self.btn_next.setText("Finish")
-        else:
-            self.btn_next.setText("Next")
-    
-    def _test_mic(self):
-        self.mic_status.setText("Listening... speak now")
-        self.mic_status.setStyleSheet(f"color: {self._theme.accent_1}; font-size: 12px;")
-        QTimer.singleShot(2000, lambda: self.mic_status.setText("✓ Microphone working!"))
-        QTimer.singleShot(2000, lambda: self.mic_status.setStyleSheet(f"color: {self._theme.success}; font-size: 12px;"))
-    
-    def _select_theme(self, name: str, btn: QPushButton):
-        for b in self.theme_btns:
-            if b != btn:
-                b.setChecked(False)
-                set_active(b, False)
-        set_active(btn, True)
-        self.parent().theme_manager.set_theme(name)
-        self.parent().apply_theme(name)
-    
-    def _go_back(self):
-        if self._current_step > 0:
-            self._show_step(self._current_step - 1)
-    
-    def _go_next(self):
-        if self._current_step < len(self._steps) - 1:
-            self._show_step(self._current_step + 1)
-        else:
-            # Save preferences
-            self.accept()
-            if self._on_complete:
-                self._on_complete()
-    
-    def showEvent(self, event):
-        super().showEvent(event)
-        if self.parent():
-            parent_rect = self.parent().geometry()
-            x = parent_rect.x() + (parent_rect.width() - self.width()) // 2
-            y = parent_rect.y() + (parent_rect.height() - self.height()) // 2
-            self.move(x, y)
-        Anim.fade_in(self.findChild(QFrame), 200)
-
-
-# =============================================================================
-# ⚙️ SETTINGS PANEL (with live preview)
-# =============================================================================
-class SettingsPanel(QWidget):
-    def __init__(self, main_window, theme: ThemeColors):
-        super().__init__()
-        self._main = main_window
-        self._theme = theme
-        self._setup_ui()
-    
-    def _setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        
-        # Sidebar categories
-        self.cat_list = QListWidget()
-        self.cat_list.setFixedWidth(200)
-        self.cat_list.setStyleSheet(f"""
-            QListWidget {{ background: {self._theme.bg_panel}; border: none; border-right: 1px solid {self._theme.border_soft}; }}
-            QListWidget::item {{ padding: 14px 16px; color: {self._theme.text_muted}; font-weight: 600; border-radius: 0; }}
-            QListWidget::item:hover {{ background: rgba(40,40,40,1); color: {self._theme.text_main}; }}
-            QListWidget::item:selected {{ background: {self._theme.accent_1}30; color: {self._theme.accent_1}; border-left: 3px solid {self._theme.accent_1}; }}
-        """)
-        categories = ["General", "Appearance", "Voice", "Hotkeys", "Privacy", "Advanced", "About"]
-        for cat in categories:
-            self.cat_list.addItem(cat)
-        self.cat_list.setCurrentRow(0)
-        self.cat_list.currentRowChanged.connect(self._switch_page)
-        layout.addWidget(self.cat_list)
-        
-        # Pages stack
-        self.pages = QStackedWidget()
-        self.pages.setStyleSheet("background: transparent;")
-        
-        self.pages.addWidget(self._build_general_page())
-        self.pages.addWidget(self._build_appearance_page())
-        self.pages.addWidget(self._build_voice_page())
-        self.pages.addWidget(self._build_hotkeys_page())
-        self.pages.addWidget(self._build_privacy_page())
-        self.pages.addWidget(self._build_advanced_page())
-        self.pages.addWidget(self._build_about_page())
-        
-        layout.addWidget(self.pages, 1)
-    
-    def _switch_page(self, index: int):
-        self.pages.setCurrentIndex(index)
-    
-    def _build_general_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("GENERAL", self._theme))
-        
-        # Startup
-        startup_group = QFrame()
-        startup_group.setProperty("class", "Panel")
-        add_shadow(startup_group)
-        sg = QVBoxLayout(startup_group)
-        sg.setContentsMargins(24, 20, 24, 20)
-        sg.setSpacing(12)
-        
-        self.cb_autostart = QCheckBox("Start WAVE on system boot")
-        self.cb_minimize_tray = QCheckBox("Minimize to tray on close")
-        self.cb_start_minimized = QCheckBox("Start minimized")
-        for cb in [self.cb_autostart, self.cb_minimize_tray, self.cb_start_minimized]:
-            cb.setStyleSheet(f"color: {self._theme.text_main}; font-size: 12px; spacing: 10px;")
-            sg.addWidget(cb)
-        
-        v.addWidget(startup_group)
-        
-        # Quick Notes (moved from Home)
-        notes_panel = QFrame()
-        notes_panel.setProperty("class", "Panel")
-        add_shadow(notes_panel)
-        np = QVBoxLayout(notes_panel)
-        np.setContentsMargins(24, 20, 24, 20)
-        np.addWidget(make_section_heading("QUICK NOTES", self._theme))
-        np.addSpacing(8)
-        self.sticky_note = QTextEdit()
-        self.sticky_note.setObjectName("StickyNote")
-        self.sticky_note.setPlaceholderText("Write your daily goals here...")
-        self.sticky_note.setMinimumHeight(120)
-        np.addWidget(self.sticky_note)
-        v.addWidget(notes_panel)
-        
-        # Environment
-        env_panel = QFrame()
-        env_panel.setProperty("class", "Panel")
-        add_shadow(env_panel)
-        ep = QVBoxLayout(env_panel)
-        ep.setContentsMargins(24, 20, 24, 20)
-        ep.addWidget(make_section_heading("ENVIRONMENT", self._theme))
-        ep.addSpacing(8)
-        self.weather_lbl = QLabel("Fetching...")
-        self.weather_lbl.setProperty("class", "InfoData")
-        ep.addWidget(self.weather_lbl)
-        v.addWidget(env_panel)
-        
-        v.addStretch()
-        return page
-    
-    def _build_appearance_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("APPEARANCE", self._theme))
-        
-        # Theme selector
-        theme_panel = QFrame()
-        theme_panel.setProperty("class", "Panel")
-        add_shadow(theme_panel)
-        tp = QVBoxLayout(theme_panel)
-        tp.setContentsMargins(24, 20, 24, 20)
-        tp.setSpacing(14)
-        
-        tp.addWidget(QLabel("Theme:"))
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(self._main.theme_manager.get_theme_names())
-        self.theme_combo.setCurrentText(self._theme.name)
-        self.theme_combo.currentTextChanged.connect(self._on_theme_change)
-        tp.addWidget(self.theme_combo)
-        
-        # Accent color picker
-        tp.addWidget(make_divider(self._theme))
-        tp.addWidget(QLabel("Custom Accent Colors:"))
-        
-        accent_row = QHBoxLayout()
-        accent_row.setSpacing(12)
-        self.accent1_btn = QPushButton("Primary")
-        self.accent1_btn.setFixedHeight(40)
-        self.accent1_btn.setStyleSheet(f"background: {self._theme.accent_1}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.accent1_btn.clicked.connect(lambda: self._pick_accent(1))
-        
-        self.accent2_btn = QPushButton("Secondary")
-        self.accent2_btn.setFixedHeight(40)
-        self.accent2_btn.setStyleSheet(f"background: {self._theme.accent_2}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.accent2_btn.clicked.connect(lambda: self._pick_accent(2))
-        
-        self.accent3_btn = QPushButton("Tertiary")
-        self.accent3_btn.setFixedHeight(40)
-        self.accent3_btn.setStyleSheet(f"background: {self._theme.accent_3}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.accent3_btn.clicked.connect(lambda: self._pick_accent(3))
-        
-        accent_row.addWidget(self.accent1_btn)
-        accent_row.addWidget(self.accent2_btn)
-        accent_row.addWidget(self.accent3_btn)
-        tp.addLayout(accent_row)
-        
-        # Blur intensity
-        tp.addWidget(make_divider(self._theme))
-        tp.addWidget(QLabel("Backdrop Blur:"))
-        self.blur_slider = QSlider(Qt.Orientation.Horizontal)
-        self.blur_slider.setRange(0, 50)
-        self.blur_slider.setValue(int(self._main.backdrop._blur_radius))
-        self.blur_slider.valueChanged.connect(self._on_blur_change)
-        tp.addWidget(self.blur_slider)
-        
-        # Panel opacity
-        tp.addWidget(QLabel("Panel Opacity:"))
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(50, 100)
-        self.opacity_slider.setValue(int(self._theme.page_bg_alpha * 100))
-        self.opacity_slider.valueChanged.connect(self._on_opacity_change)
-        tp.addWidget(self.opacity_slider)
-        
-        # Save as custom theme
-        save_btn = QPushButton("Save as Custom Theme")
-        save_btn.setProperty("class", "ActionBtn")
-        save_btn.clicked.connect(self._save_custom_theme)
-        tp.addWidget(save_btn)
-        
-        v.addWidget(theme_panel)
-        v.addStretch()
-        return page
-    
-    def _on_theme_change(self, name: str):
-        self._main.theme_manager.set_theme(name)
-        self._main.apply_theme(name)
-        # Update this panel's theme reference
-        self._theme = self._main.theme_manager.get_current()
-        self._refresh_appearance_controls()
-    
-    def _refresh_appearance_controls(self):
-        t = self._theme
-        self.accent1_btn.setStyleSheet(f"background: {t.accent_1}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.accent2_btn.setStyleSheet(f"background: {t.accent_2}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.accent3_btn.setStyleSheet(f"background: {t.accent_3}; color: #000; border-radius: 8px; font-weight: 700;")
-        self.blur_slider.setValue(int(self._main.backdrop._blur_radius))
-        self.opacity_slider.setValue(int(t.page_bg_alpha * 100))
-    
-    def _pick_accent(self, which: int):
-        color = QColorDialog.getColor(QColor(getattr(self._theme, f"accent_{which}")), self, "Pick Accent Color")
-        if color.isValid():
-            hex_color = color.name()
-            setattr(self._theme, f"accent_{which}", hex_color)
-            self._refresh_appearance_controls()
-            self._main.apply_theme(self._theme.name)  # Re-apply with modified theme
-    
-    def _on_blur_change(self, value: int):
-        self._main.backdrop.set_blur_radius(value)
-    
-    def _on_opacity_change(self, value: int):
-        self._theme.page_bg_alpha = value / 100.0
-        self._main.apply_theme(self._theme.name)
-    
-    def _save_custom_theme(self):
-        name, ok = QFileDialog.getSaveFileName(self, "Save Theme", "", "JSON Files (*.json)")
-        if ok:
-            custom = ThemeColors(
-                name=os.path.basename(name).replace(".json", ""),
-                bg_main=self._theme.bg_main,
-                bg_panel=self._theme.bg_panel,
-                bg_surface=self._theme.bg_surface,
-                bg_surface2=self._theme.bg_surface2,
-                border=self._theme.border,
-                border_soft=self._theme.border_soft,
-                text_main=self._theme.text_main,
-                text_muted=self._theme.text_muted,
-                text_faint=self._theme.text_faint,
-                accent_1=self._theme.accent_1,
-                accent_2=self._theme.accent_2,
-                accent_3=self._theme.accent_3,
-                success=self._theme.success,
-                warning=self._theme.warning,
-                danger=self._theme.danger,
-                bubble_sent=self._theme.bubble_sent,
-                bubble_recv=self._theme.bubble_recv,
-                page_bg_alpha=self._theme.page_bg_alpha,
-                panel_top_alpha=self._theme.panel_top_alpha,
-                panel_bottom_alpha=self._theme.panel_bottom_alpha,
-            )
-            self._main.theme_manager.save_custom_theme(custom)
-            self.theme_combo.addItem(custom.name)
-            self.theme_combo.setCurrentText(custom.name)
-    
-    def _build_voice_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("VOICE SETTINGS", self._theme))
-        
-        panel = QFrame()
-        panel.setProperty("class", "Panel")
-        add_shadow(panel)
-        pv = QVBoxLayout(panel)
-        pv.setContentsMargins(24, 20, 24, 20)
-        pv.setSpacing(14)
-        
-        # TTS Voice
-        pv.addWidget(QLabel("TTS Voice:"))
-        self.tts_combo = QComboBox()
-        self.tts_combo.addItems(["Default (SAPI)", "Microsoft David", "Microsoft Zira", "Microsoft Mark"])
-        pv.addWidget(self.tts_combo)
-        
-        # Speech rate
-        pv.addWidget(make_divider(self._theme))
-        pv.addWidget(QLabel("Speech Rate:"))
-        self.rate_slider = QSlider(Qt.Orientation.Horizontal)
-        self.rate_slider.setRange(50, 200)
-        self.rate_slider.setValue(100)
-        pv.addWidget(self.rate_slider)
-        
-        # Volume
-        pv.addWidget(make_divider(self._theme))
-        pv.addWidget(QLabel("TTS Volume:"))
-        self.tts_vol_slider = QSlider(Qt.Orientation.Horizontal)
-        self.tts_vol_slider.setRange(0, 100)
-        self.tts_vol_slider.setValue(80)
-        pv.addWidget(self.tts_vol_slider)
-        
-        # Wake word
-        pv.addWidget(make_divider(self._theme))
-        pv.addWidget(QLabel("Wake Word:"))
-        self.wake_combo = QComboBox()
-        self.wake_combo.addItems(["Hey Wave", "Hello Wave", "Okay Wave", "Wave", "Custom..."])
-        pv.addWidget(self.wake_combo)
-        
-        # STT Language
-        pv.addWidget(make_divider(self._theme))
-        pv.addWidget(QLabel("Speech Recognition Language:"))
-        self.stt_lang = QComboBox()
-        self.stt_lang.addItems(["en-US", "en-IN", "hi-IN", "es-ES", "fr-FR", "de-DE"])
-        pv.addWidget(self.stt_lang)
-        
-        v.addWidget(panel)
-        v.addStretch()
-        return page
-    
-    def _build_hotkeys_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("GLOBAL HOTKEYS", self._theme))
-        
-        panel = QFrame()
-        panel.setProperty("class", "Panel")
-        add_shadow(panel)
-        pv = QVBoxLayout(panel)
-        pv.setContentsMargins(24, 20, 24, 20)
-        pv.setSpacing(14)
-        
-        hotkeys = [
-            ("Toggle Mic", "ctrl+shift+space"),
-            ("Command Palette", "ctrl+k"),
-            ("Show/Hide Window", "ctrl+alt+w"),
-            ("Next Tab", "ctrl+tab"),
-            ("Previous Tab", "ctrl+shift+tab"),
-            ("Clear Chat", "ctrl+l"),
-        ]
-        
-        for name, default in hotkeys:
-            row = QHBoxLayout()
-            row.setSpacing(12)
-            lbl = QLabel(name)
-            lbl.setFixedWidth(160)
-            lbl.setStyleSheet(f"color: {self._theme.text_main}; font-size: 12px;")
-            edit = QLineEdit(default)
-            edit.setReadOnly(True)
-            edit.setFixedWidth(200)
-            edit.setStyleSheet(f"background: {self._theme.bg_surface}; color: {self._theme.text_muted}; border: 1px solid {self._theme.border}; border-radius: 8px; padding: 8px 12px;")
-            btn_change = QPushButton("Change")
-            btn_change.setProperty("class", "ActionBtn")
-            btn_change.setFixedWidth(80)
-            btn_change.clicked.connect(partial(self._capture_hotkey, edit, name))
-            row.addWidget(lbl)
-            row.addWidget(edit)
-            row.addWidget(btn_change)
-            row.addStretch()
-            pv.addLayout(row)
-        
-        v.addWidget(panel)
-        v.addStretch()
-        return page
-    
-    def _capture_hotkey(self, edit: QLineEdit, name: str):
-        edit.setText("Press keys...")
-        edit.setStyleSheet(f"background: {self._theme.accent_1}30; color: {self._theme.accent_1}; border: 1px solid {self._theme.accent_1}; border-radius: 8px; padding: 8px 12px;")
-        # Would need a key capture dialog - simplified
-    
-    def _build_privacy_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("PRIVACY & DATA", self._theme))
-        
-        panel = QFrame()
-        panel.setProperty("class", "Panel")
-        add_shadow(panel)
-        pv = QVBoxLayout(panel)
-        pv.setContentsMargins(24, 20, 24, 20)
-        pv.setSpacing(14)
-        
-        self.cb_clipboard = QCheckBox("Enable clipboard monitoring")
-        self.cb_clipboard.setChecked(True)
-        self.cb_screen = QCheckBox("Allow screen capture (OCR/Vision)")
-        self.cb_screen.setChecked(True)
-        self.cb_analytics = QCheckBox("Send anonymous usage analytics")
-        self.cb_analytics.setChecked(False)
-        self.cb_chat_history = QCheckBox("Save chat history locally")
-        self.cb_chat_history.setChecked(True)
-        
-        for cb in [self.cb_clipboard, self.cb_screen, self.cb_analytics, self.cb_chat_history]:
-            cb.setStyleSheet(f"color: {self._theme.text_main}; font-size: 12px; spacing: 10px;")
-            pv.addWidget(cb)
-        
-        pv.addWidget(make_divider(self._theme))
-        
-        btn_clear_data = QPushButton("Clear All Local Data")
-        btn_clear_data.setProperty("class", "DangerPill")
-        btn_clear_data.clicked.connect(self._clear_all_data)
-        pv.addWidget(btn_clear_data)
-        
-        v.addWidget(panel)
-        v.addStretch()
-        return page
-    
-    def _clear_all_data(self):
-        reply = QMessageBox.question(self, "Confirm", "Delete ALL local data? (Chat history, settings, clipboard, logs)",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            # Clear everything
-            if os.path.exists(SETTINGS_FILE):
-                os.remove(SETTINGS_FILE)
-            # Clear DB
-            try:
-                db.clear_all()
-            except Exception:
-                pass
-            QMessageBox.information(self, "Done", "All local data cleared. Restart the app.")
-    
-    def _build_advanced_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("ADVANCED", self._theme))
-        
-        panel = QFrame()
-        panel.setProperty("class", "Panel")
-        add_shadow(panel)
-        pv = QVBoxLayout(panel)
-        pv.setContentsMargins(24, 20, 24, 20)
-        pv.setSpacing(14)
-        
-        # Log level
-        pv.addWidget(QLabel("Log Level:"))
-        self.log_combo = QComboBox()
-        self.log_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
-        self.log_combo.setCurrentText("INFO")
-        pv.addWidget(self.log_combo)
-        
-        # API settings
-        pv.addWidget(make_divider(self._theme))
-        pv.addWidget(QLabel("Groq API Key:"))
-        self.api_key = QLineEdit()
-        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText("Leave blank to use default")
-        pv.addWidget(self.api_key)
-        
-        pv.addWidget(QLabel("Model:"))
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"])
-        pv.addWidget(self.model_combo)
-        
-        # Reset buttons
-        pv.addWidget(make_divider(self._theme))
-        btn_reset_ui = QPushButton("Reset UI Layout")
-        btn_reset_ui.setProperty("class", "ActionBtn")
-        pv.addWidget(btn_reset_ui)
-        
-        v.addWidget(panel)
-        v.addStretch()
-        return page
-    
-    def _build_about_page(self):
-        page = QWidget()
-        v = QVBoxLayout(page)
-        v.setContentsMargins(32, 28, 32, 28)
-        v.setSpacing(20)
-        
-        v.addWidget(make_section_heading("ABOUT WAVE", self._theme))
-        
-        panel = QFrame()
-        panel.setProperty("class", "Panel")
-        add_shadow(panel)
-        pv = QVBoxLayout(panel)
-        pv.setContentsMargins(24, 20, 24, 20)
-        pv.setSpacing(14)
-        
-        about_text = f"""
-        <div style="text-align:center; line-height:1.8;">
-        <h2 style="color:{self._theme.text_main}; margin:0;">{config.APP_NAME}</h2>
-        <p style="color:{self._theme.text_muted}; margin:8px 0;">Version {config.VERSION}</p>
-        <hr style="border-color:{self._theme.border}; margin:16px 0;">
-        <p style="color:{self._theme.text_main};">Your intelligent desktop companion — voice-controlled, always ready to help.</p>
-        <p style="color:{self._theme.text_muted}; font-size:12px;">
-        Voice: Windows SAPI (TTS) + Google Speech Recognition (STT)<br>
-        Brain: Groq (llama-3.1-8b-instant)<br>
-        Vision: Tesseract OCR<br>
-        UI: PyQt6 + qtawesome
-        </p>
-        <hr style="border-color:{self._theme.border}; margin:16px 0;">
-        <p style="color:{self._theme.text_faint}; font-size:11px;">
-        Built with ❤️ using Python & Qt
-        </p>
-        </div>
-        """
-        about_lbl = QLabel(about_text)
-        about_lbl.setWordWrap(True)
-        about_lbl.setStyleSheet("background: transparent;")
-        pv.addWidget(about_lbl)
-        
-        # Links
-        links_row = QHBoxLayout()
-        links_row.setSpacing(12)
-        for text, url in [("GitHub", "https://github.com"), ("Issues", "https://github.com/issues"), ("Docs", "https://docs.example.com")]:
-            btn = QPushButton(text)
-            btn.setProperty("class", "ActionBtn")
-            btn.clicked.connect(lambda _, u=url: os.system(f"start {u}"))
-            links_row.addWidget(btn)
-        links_row.addStretch()
-        pv.addLayout(links_row)
-        
-        v.addWidget(panel)
-        v.addStretch()
-        return page
-
-
-# =============================================================================
-# 🔔 TOAST NOTIFICATIONS
-# =============================================================================
-class ToastManager(QObject):
-    def __init__(self, parent, theme: ThemeColors):
-        super().__init__(parent)
-        self._parent = parent
-        self._theme = theme
-        self._toasts = []
-    
-    def show(self, message: str, icon: str = "info", duration: int = 3000):
-        toast = QFrame()
-        toast.setProperty("class", "Panel")
-        toast.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.ToolTip | Qt.WindowType.WindowStaysOnTopHint)
-        toast.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
-        layout = QHBoxLayout(toast)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(10)
-        
-        icons = {"info": "ℹ️", "success": "✅", "warning": "⚠️", "error": "❌"}
-        colors = {"info": self._theme.accent_1, "success": self._theme.success, 
-                  "warning": self._theme.warning, "error": self._theme.danger}
-        
-        icon_lbl = QLabel(icons.get(icon, "ℹ️"))
-        icon_lbl.setStyleSheet(f"font-size: 16px; color: {colors.get(icon, self._theme.accent_1)};")
-        layout.addWidget(icon_lbl)
-        
-        msg_lbl = QLabel(message)
-        msg_lbl.setStyleSheet(f"color: {self._theme.text_main}; font-size: 12px;")
-        msg_lbl.setWordWrap(True)
-        layout.addWidget(msg_lbl, 1)
-        
-        close_btn = QPushButton("✕")
-        close_btn.setFixedSize(20, 20)
-        close_btn.setStyleSheet("background: transparent; border: none; color: #888; font-size: 12px;")
-        close_btn.clicked.connect(toast.close)
-        layout.addWidget(close_btn)
-        
-        # Position at top-right of parent
-        toast.adjustSize()
-        parent_rect = self._parent.geometry()
-        x = parent_rect.x() + parent_rect.width() - toast.width() - 24
-        y = parent_rect.y() + 24 + len(self._toasts) * (toast.height() + 8)
-        toast.move(x, y)
-        
-        self._toasts.append(toast)
-        toast.show()
-        Anim.fade_in(toast, 200)
-        
-        def remove_toast():
-            if toast in self._toasts:
-                self._toasts.remove(toast)
-            toast.deleteLater()
-            self._reposition()
-        
-        QTimer.singleShot(duration, remove_toast)
-        return toast
-    
-    def _reposition(self):
-        parent_rect = self._parent.geometry()
-        for i, toast in enumerate(self._toasts):
-            y = parent_rect.y() + 24 + i * (toast.height() + 8)
-            x = parent_rect.x() + parent_rect.width() - toast.width() - 24
-            toast.move(x, y)
-
-
-# =============================================================================
-# ⚙️ WORKER POOL (cleaner threading)
-# =============================================================================
-class WorkerSignals(QObject):
-    result = pyqtSignal(object)
-    error = pyqtSignal(str)
-    progress = pyqtSignal(int)
-    finished = pyqtSignal()
-
-
-class Worker(QThread):
-    def __init__(self, fn, *args, **kwargs):
-        super().__init__()
-        self.fn = fn
-        self.args = args
-        self.kwargs = kwargs
-        self.signals = WorkerSignals()
-    
-    def run(self):
-        try:
-            result = self.fn(*self.args, **self.kwargs)
-            self.signals.result.emit(result)
-        except Exception as e:
-            self.signals.error.emit(str(e))
-        finally:
-            self.signals.finished.emit()
-
-
-class WorkerPool:
-    def __init__(self):
-        self._workers = []
-    
-    def submit(self, fn, *args, **kwargs) -> Worker:
-        worker = Worker(fn, *args, **kwargs)
-        worker.finished.connect(lambda: self._cleanup(worker))
-        self._workers.append(worker)
-        worker.start()
-        return worker
-    
-    def _cleanup(self, worker):
-        if worker in self._workers:
-            self._workers.remove(worker)
-    
-    def shutdown(self):
-        for w in self._workers:
-            w.terminate()
-            w.wait(1000)
-        self._workers.clear()
-
-
-# =============================================================================
-# 🔧 AUDIO HELPERS
-# =============================================================================
 def get_system_volume():
     if not HAS_PYCAW:
         return None
@@ -2694,11 +84,57 @@ NAV_ITEMS = [
     ("Files", "folder", 5),
     ("Vision", "eye", 6),
     ("Clipboard", "clipboard", 7),
-    ("Settings", "gear", 8),
+    ("Activity", "clock-rotate-left", 8),
+    ("Workflows", "diagram-project", 9),  # Tier 3 item 9
+    # Tier 21: six new DB-backed management pages, inserted between
+    # Workflows and Settings so every existing index above stays unchanged.
+    ("Memory", "brain", 10),
+    ("Reminders", "bell", 11),
+    ("Notes & To-dos", "list-check", 12),
+    ("Calendar", "calendar", 13),
+    ("Skills", "wand-magic-sparkles", 14),
+    ("Performance", "gauge", 15),
+    ("Settings", "gear", 16),
 ]
+ACTIVITY_PAGE_INDEX = 8
+WORKFLOWS_PAGE_INDEX = 9
+MEMORY_PAGE_INDEX = 10
+REMINDERS_PAGE_INDEX = 11
+NOTES_TODOS_PAGE_INDEX = 12
+CALENDAR_PAGE_INDEX = 13
+SKILLS_PAGE_INDEX = 14
+PERFORMANCE_PAGE_INDEX = 15
+SETTINGS_PAGE_INDEX = 16
+
+
+class _ReplyView:
+    """Tier 11: the on-screen side of one streaming reply - its bubble, the
+    text shown so far, and whether a throttled re-render is queued."""
+    __slots__ = ("bubble", "text", "render_pending", "done")
+
+    def __init__(self, bubble):
+        self.bubble = bubble
+        self.text = ""
+        self.render_pending = False
+        self.done = False
 
 
 class MainWindow(QMainWindow):
+    # Phase 4: emitted from worker/watcher threads, handled on the GUI thread
+    audit_changed = pyqtSignal()
+    skill_event = pyqtSignal(str, str)
+    proactive_nudge = pyqtSignal(str, str, str)  # Phase 6: kind, title, message - emitted from ProactiveEngine's
+                                                   # own daemon thread (automation/proactive.py), same cross-thread
+                                                   # pattern as audit_changed/skill_event above
+    thread_health_changed = pyqtSignal()  # Tier 19: thread_supervisor's listener fires this (no payload - the
+                                           # slot re-reads thread_supervisor.status() fresh, so it can never drift
+                                           # from the real state); same cross-thread pattern as the three above.
+    ollama_event = pyqtSignal(str, str)  # Tier 19: event, message - from ollama_lifecycle's own listener,
+                                          # same cross-thread pattern (brain/ollama_lifecycle.py's add_listener).
+    tool_activity = pyqtSignal(str)  # Tier 21: a short "Wave is doing: X" description, emitted when
+                                      # automation/audit.py's ActionScope is entered (its new "started"
+                                      # listener event) - same cross-thread pattern as the four above.
+
     def __init__(self):
         super().__init__()
         
@@ -2709,12 +145,34 @@ class MainWindow(QMainWindow):
         
         # State
         self.brain = WaveBrain()
+        # Tier 23: left None until the feature is actually touched (the
+        # user ticks "Enable remote dashboard", or load_settings() finds
+        # it was on last session) - importing remote.runner is what first
+        # tries `import fastapi`/`import uvicorn`, and a default install
+        # that never opens the Remote settings page should pay nothing for
+        # it, the same promise web/web_ops.py's pywhatkit guard makes.
+        self.remote_dashboard = None
         self.mic_active = False
+        self.wake_phrases = ["hello wave", "wake up", "hey wave"]
         self.tts_thread = None
         self.mic_worker = None
         self.clip_worker = None
         self.action_worker = None
         self.ocr_worker = None
+        self.reminder_worker = None
+        # Tier 25: avatar companion - all three stay None until _init_avatar()
+        # (called after load_settings(), below) actually builds them; a run
+        # with no rig built yet (no photo set up) leaves them None forever,
+        # which is exactly the pre-Tier-25 behaviour (dashboard is the only
+        # surface, shown minimized - see should_start_hidden()).
+        self.avatar_window = None
+        self.avatar_state_machine = None
+        self.avatar_controller = None
+        # Tier 19: crash-recovery bookkeeping for the reminder worker - see
+        # _on_reminder_worker_finished.
+        self._reminder_worker_restart_count = 0
+        self._reminder_worker_gave_up = False
+        self._shutting_down = False
         self.last_net_io = psutil.net_io_counters()
         self.focus_mode = False
         self.media_playing = False
@@ -2726,7 +184,20 @@ class MainWindow(QMainWindow):
         self._chat_messages = []  # For grouping
         self._last_sender = None
         self._pending_attachment = None
-        
+        # Tier 11: the reply currently streaming (an AIStreamWorker), and the
+        # time-to-first-audio turn a voice command opened for the message
+        # about to be sent (see process_voice_input / send_message).
+        self._reply_worker = None
+        self._voice_ttfa_turn = None
+        # Tier 12: the live caption bubble (see _on_partial_text)
+        self._caption_row = None
+        self._caption_label = None
+        self._caption_seq = 0
+        self._caption_closed_at = -1e9
+        # Time-to-first-audio: voice/tts.py reports the moment audio starts.
+        tts_engine.on_playback_start = ttfa.tracker.on_audio_start
+        tts_engine.warm_up()
+
         # UI refs
         self.backdrop = None
         self.stack = None
@@ -2743,7 +214,22 @@ class MainWindow(QMainWindow):
         
         # Start background workers
         self._start_background_workers()
-        
+
+        # Restore saved settings (privacy toggles, notes, volume...) -
+        # silent=True so this doesn't pop a toast on every single launch;
+        # the manual "Load Settings" command palette action still confirms
+        # out loud.
+        self.load_settings(silent=True)
+
+        # Tier 25: build the avatar companion (if a rig has been built -
+        # see avatar/rig.py) and decide whether the dashboard should start
+        # hidden behind it. Must run after load_settings() (reads the same
+        # settings file for the avatar_* toggles) and before wave_start.pyw
+        # calls should_start_hidden() right after this constructor returns.
+        self._init_avatar()
+        if hasattr(self, "settings_panel") and hasattr(self.settings_panel, "_refresh_avatar_build_status"):
+            self.settings_panel._refresh_avatar_build_status()
+
         # Check if first run
         if not os.path.exists(SETTINGS_FILE):
             QTimer.singleShot(500, self._show_onboarding)
@@ -2819,13 +305,77 @@ class MainWindow(QMainWindow):
         self.stack.add_page(self._build_files_page())
         self.stack.add_page(wrap_scroll(self._build_vision_page(), self.theme))
         self.stack.add_page(wrap_scroll(self._build_clipboard_page(), self.theme))
-        self.stack.add_page(wrap_scroll(self._build_settings_page(), self.theme))
+        self._activity_page = self._build_activity_page()
+        self.stack.add_page(wrap_scroll(self._activity_page, self.theme))
+        self.workflows_panel = self._build_workflows_page()
+        self.stack.add_page(self.workflows_panel)
+        # Tier 21: six new DB-backed management pages (see NAV_ITEMS above
+        # for their indices) - inserted here, between Workflows and
+        # Settings, so Settings stays last.
+        self.memory_panel = self._build_memory_page()
+        self.stack.add_page(self.memory_panel)
+        self.reminders_panel = self._build_reminders_page()
+        self.stack.add_page(self.reminders_panel)
+        self.notes_todos_panel = self._build_notes_todos_page()
+        self.stack.add_page(self.notes_todos_panel)
+        self.calendar_panel = self._build_calendar_page()
+        self.stack.add_page(self.calendar_panel)
+        self.skills_panel = self._build_skills_page()
+        self.stack.add_page(self.skills_panel)
+        self.performance_panel = self._build_performance_page()
+        self.stack.add_page(self.performance_panel)
+        self.settings_panel = self._build_settings_page()
+        self.stack.add_page(wrap_scroll(self.settings_panel, self.theme))
         
         root.addWidget(self.stack, 1)
 
         self.nav_buttons[0].setChecked(True)
         self._load_chat_history()
-    
+
+        # Phase 4: live Activity page + hot-reload skills
+        self.audit_changed.connect(self._on_audit_event)
+        audit_mod.audit.add_listener(lambda event, rec: self.audit_changed.emit())
+        self.skill_event.connect(self._on_skill_event)
+        QTimer.singleShot(1500, self._start_skill_watcher)
+
+        # Tier 21: live activity banner on the chat page - "Wave is doing:
+        # X" for whatever tool call is currently running. A second listener
+        # on the SAME audit feed as just above (add_listener appends, it
+        # doesn't replace), filtered to only the new "started" event (see
+        # automation/audit.py's ActionScope.__enter__ and add_listener's own
+        # docstring for why there's no matching "finished" event to pair it
+        # with - _on_tool_activity below auto-hides on a short timer instead).
+        self.tool_activity.connect(self._on_tool_activity)
+        audit_mod.audit.add_listener(self._on_audit_activity_event)
+
+        # Phase 6: proactive engine - battery-low / upcoming-calendar-event
+        # nudges Wave gives unprompted. Same cross-thread wiring as audit_changed
+        # above: the engine's own daemon thread calls the lambda, which only
+        # ever does a thread-safe .emit() - _on_proactive_nudge (connected to
+        # the signal, so it runs on the GUI thread) does the actual UI work.
+        self.proactive_nudge.connect(self._on_proactive_nudge)
+        proactive_engine.add_listener(
+            lambda nudge: self.proactive_nudge.emit(nudge.kind, nudge.title, nudge.message))
+
+        # Tier 18: lets ProactiveEngine's own background thread trigger a
+        # scheduled workflow run WITHOUT this Qt-free module ever touching
+        # Qt or WaveBrain directly - see automation/proactive.py's
+        # set_workflow_runner() docstring. self._run_scheduled_workflow
+        # below hands off to self.worker_pool, which (like Qt's thread
+        # pool machinery generally) is safe to submit to from any thread.
+        proactive_engine.set_workflow_runner(self._run_scheduled_workflow)
+
+        # Tier 19: thread_supervisor's health dot (sidebar) and
+        # ollama_lifecycle's own toasts - same cross-thread wiring as
+        # audit_changed/proactive_nudge above. thread_health_changed carries
+        # no payload on purpose (see its own declaration): the slot just
+        # re-reads thread_supervisor.status() fresh every time, so it can
+        # never show something stale or drift from the real state.
+        self.thread_health_changed.connect(self._refresh_health_dot)
+        thread_supervisor.add_listener(lambda name, event: self.thread_health_changed.emit())
+        self.ollama_event.connect(self._on_ollama_event)
+        ollama_lifecycle.add_listener(lambda event, message: self.ollama_event.emit(event, message))
+
     def _start_background_workers(self):
         # Weather
         self.weather_worker = WeatherWorker()
@@ -2842,7 +392,115 @@ class MainWindow(QMainWindow):
         self.media_info_worker = MediaInfoWorker()
         self.media_info_worker.info_ready.connect(self.update_now_playing)
         self.media_info_worker.start()
-    
+
+        # Reminders / alarms - see _start_reminder_worker() (Tier 19 factored
+        # the construction out so a crashed worker can be recreated the
+        # same way - see _on_reminder_worker_finished).
+        self._start_reminder_worker()
+
+        # Phase 6: proactive engine - a plain daemon thread (not a QThread;
+        # see automation/proactive.py), started here alongside the other
+        # background workers and stopped in closeEvent the same way.
+        proactive_engine.start()
+
+        # Tier 2 item #6: memory consolidation - same plain-daemon-thread
+        # shape as proactive_engine just above (see
+        # brain/memory_consolidation.py), started/stopped alongside it.
+        memory_consolidator.start()
+
+        # Tier 19: watch all three raw-daemon-thread singletons above (plus
+        # the skill watcher, once _start_skill_watcher has actually created
+        # it - see there) so a thread that silently dies (a BaseException
+        # escaping its tick loop - see automation/thread_supervisor.py's
+        # own docstring) gets restarted instead of just staying dead for
+        # the rest of the session.
+        thread_supervisor.watch("proactive_engine", proactive_engine)
+        thread_supervisor.watch("memory_consolidator", memory_consolidator)
+        # Tier 19: the action log's background DB writer (DbStore only -
+        # MemoryStore has nothing to watch, hence the None check) - see
+        # automation/audit.py's Audit.store_for_supervision.
+        db_writer_store = audit_mod.audit.store_for_supervision
+        if db_writer_store is not None:
+            thread_supervisor.watch("audit_db_writer", db_writer_store)
+        thread_supervisor.start()
+
+        # Tier 19: Ollama lifecycle (start `ollama serve` + pull its model,
+        # only when Ollama is actually relevant - see
+        # brain/ollama_lifecycle.py's _is_relevant()) runs on its own
+        # daemon thread (ensure_ready()'s default wait=False) so a
+        # multi-GB first-time model pull never holds up startup.
+        ollama_lifecycle.ensure_ready()
+
+        # Tier 19: startup health check (mic, speaker, voice models, LLM
+        # provider, Tesseract) - via worker_pool, never the GUI thread,
+        # since it opens real audio devices and makes a real network call.
+        # "Reported loudly in the UI": every non-OK result becomes its own
+        # toast in _on_health_check_done, not just a log line.
+        health_worker = self.worker_pool.submit(run_health_check)
+        health_worker.signals.result.connect(self._on_health_check_done)
+
+    def _start_reminder_worker(self):
+        """Builds, wires, and starts a fresh ReminderWorker. Tier 19 pulled
+        this out of _start_background_workers() so _on_reminder_worker_finished
+        (below) can call it again to replace a crashed worker - a QThread
+        can't just be start()-ed again once its run() has returned (and
+        even if it could, its signals would still need reconnecting), so
+        the correct fix is the same one automation/thread_supervisor.py's
+        three singletons already use internally for their own
+        threading.Thread: build a brand new one."""
+        self.reminder_worker = ReminderWorker()
+        self.reminder_worker.reminder_due.connect(self.on_reminder_due)
+        # 🔧 Tier 3 / item 8: two new signals alongside the original
+        # reminder_due - see ReminderWorker's docstring in ui/workers.py.
+        self.reminder_worker.reminder_upcoming.connect(self.on_reminder_upcoming)
+        # 🔧 Tier 18: reminder_followup moved to automation/proactive.py's
+        # _check_reminder_followups() - see ReminderWorker's own docstring.
+        # Tier 19: QThread's own finished signal - emitted when run()
+        # returns for ANY reason, deliberate stop() or an unhandled crash
+        # - see _on_reminder_worker_finished for how it tells them apart.
+        self.reminder_worker.finished.connect(self._on_reminder_worker_finished)
+        self.reminder_worker.start()
+        if self._reminder_worker_restart_count > 0:
+            # Tier 19: same "stayed up long enough, stop counting this as
+            # part of the earlier crash loop" idea as
+            # automation/thread_supervisor.py's own healthy-reset, just
+            # done with a Qt timer here instead of a polling thread - this
+            # worker has no separate supervisor ticking it.
+            worker_ref = self.reminder_worker
+            QTimer.singleShot(int(config.THREAD_SUPERVISOR_HEALTHY_RESET_S * 1000),
+                               lambda: self._reset_reminder_worker_restart_count(worker_ref))
+
+    def _reset_reminder_worker_restart_count(self, worker_ref):
+        if self.reminder_worker is worker_ref:  # still the same instance - stayed alive the whole time
+            self._reminder_worker_restart_count = 0
+
+    def _on_reminder_worker_finished(self):
+        """Tier 19: see _start_reminder_worker's docstring. finished fires
+        whenever run() returns, for ANY reason - distinguish a deliberate
+        stop() (ReminderWorker.is_running was already flipped False before
+        the thread actually exited) from an unhandled crash (is_running is
+        still True - nothing told it to stop, it just died, the same
+        Tier-5-precedent BaseException-escape risk
+        automation/thread_supervisor.py's docstring explains for the other
+        three background singletons) - only the second case restarts it."""
+        if self._shutting_down or self._reminder_worker_gave_up:
+            return
+        worker = self.reminder_worker
+        if worker is not None and not worker.is_running:
+            return  # a deliberate stop() - not a crash
+        if self._reminder_worker_restart_count >= config.THREAD_SUPERVISOR_MAX_RESTARTS:
+            self._reminder_worker_gave_up = True
+            logger.error("ReminderWorker crashed and hit its restart cap - "
+                         "reminders won't fire again until Wave is restarted.")
+            return
+        backoff_ms = int(1000 * min(
+            config.THREAD_SUPERVISOR_MAX_BACKOFF_S,
+            config.THREAD_SUPERVISOR_BASE_BACKOFF_S * (2 ** self._reminder_worker_restart_count)))
+        self._reminder_worker_restart_count += 1
+        logger.warning(f"ReminderWorker is no longer running - restarting in {backoff_ms}ms "
+                        f"(attempt {self._reminder_worker_restart_count}/{config.THREAD_SUPERVISOR_MAX_RESTARTS}).")
+        QTimer.singleShot(backoff_ms, self._start_reminder_worker)
+
     def setup_global_hotkeys(self):
         if not HAS_KEYBOARD:
             return
@@ -2850,6 +508,7 @@ class MainWindow(QMainWindow):
             keyboard.add_hotkey('ctrl+shift+space', self._global_mic_toggle)
             keyboard.add_hotkey('ctrl+k', self._global_command_palette)
             keyboard.add_hotkey('ctrl+alt+w', self._global_toggle_window)
+            keyboard.add_hotkey('ctrl+alt+x', self._global_emergency_stop)
         except Exception as e:
             logger.warning(f"Global hotkeys not available: {e}")
     
@@ -2862,6 +521,85 @@ class MainWindow(QMainWindow):
     
     def _global_toggle_window(self):
         QTimer.singleShot(0, self._toggle_window_visibility)
+
+    def _global_emergency_stop(self):
+        # Must run on main thread - keyboard's hotkey callback fires on its
+        # own listener thread, and every object touched below (TTS, workers,
+        # the mic, the UI) belongs to the main/GUI thread.
+        QTimer.singleShot(0, self.emergency_stop)
+
+    # Tier 19: how long the reply worker's own cooperative cancel_event
+    # gets to actually unwind it (close the HTTP stream, save the partial
+    # reply as interrupted, record the trace row - see think_stream()'s
+    # _TurnCancelled/GeneratorExit handling) before emergency_stop()'s
+    # hard-terminate loop below potentially kills it mid-cleanup instead.
+    # Short enough that a panic button still feels instant.
+    EMERGENCY_STOP_GRACE_MS = 300
+
+    def emergency_stop(self):
+        """Panic button (Ctrl+Alt+X): immediately halts whatever Wave is
+        currently doing. Stops speech, forcibly terminates any in-flight AI
+        response/tool-dispatch and any running action worker, and drops the
+        mic to SLEEPING so trailing audio from whatever was happening can't
+        immediately trigger another command. Does NOT touch the always-on
+        background pollers (weather/clipboard/media/reminders) - those
+        aren't "doing" anything the user needs to interrupt.
+
+        Worker termination here mirrors WorkerPool.shutdown() (used today on
+        app close) rather than inventing a gentler mechanism: QThread.terminate()
+        is already this codebase's accepted way to hard-kill a worker, so
+        emergency stop reuses it instead of introducing a second, inconsistent
+        shutdown path.
+
+        Tier 19: that hard-terminate loop is kept exactly as it was - it's
+        still the only backstop for a worker that never checks a
+        cancel_event at all (a stuck direct action) or doesn't exit within
+        its grace window. What's new is the loop just above it: the reply
+        worker (if any) was already asked to stop cooperatively by
+        _cancel_reply() two lines up, but until now terminate() always
+        followed that ask on the very next statement - the same thread
+        never got a realistic chance to notice and unwind itself before
+        being killed outright. Giving it EMERGENCY_STOP_GRACE_MS first
+        means the common case (an LLM round between checks, a tool that
+        already returned) now actually exits cleanly instead of being
+        cut off mid-cleanup; anything still alive after that falls straight
+        through to the unchanged hard-terminate loop below, same as before
+        this existed."""
+        self._cancel_reply()
+        self.stop_speaking()
+
+        # Tier 19: give whatever was JUST cooperatively cancelled above a
+        # short window to actually finish on its own. A worker that was
+        # never asked to cancel (nothing in _active_workers but the reply
+        # worker ever is today) has cancelled == False and is skipped here
+        # at zero cost, falling straight to the hard-terminate loop below
+        # exactly as before.
+        for worker in list(self._active_workers):
+            if getattr(worker, "cancelled", False):
+                try:
+                    worker.wait(self.EMERGENCY_STOP_GRACE_MS)
+                except Exception as e:
+                    logger.warning(f"Emergency stop: error waiting on a cancelled worker: {e}")
+
+        # Any in-flight brain.think() call (AIWorker) - see send_message().
+        for worker in list(self._active_workers):
+            try:
+                worker.terminate()
+                worker.wait(1000)
+            except Exception as e:
+                logger.warning(f"Emergency stop: couldn't terminate an AI worker: {e}")
+        self._active_workers.clear()
+
+        # Any in-flight direct action (open app, OCR, screenshot, etc.) - see _run_action().
+        self.worker_pool.shutdown()
+
+        # Back to a safe idle state rather than mid-command.
+        if self.mic_worker:
+            self.mic_worker.set_mode("SLEEPING")
+
+        logger.info("Emergency stop triggered (Ctrl+Alt+X) - all in-flight actions halted.")
+        self.toast.show("Emergency stop - all actions halted.", "error")
+        self.add_chat_bubble("🛑 Emergency stop — all actions halted.", is_user=False)
     
     def _toggle_window_visibility(self):
         if self.isVisible():
@@ -2881,11 +619,19 @@ class MainWindow(QMainWindow):
             "File Browser": lambda: self.stack.slide_to(5),
             "Screen OCR": lambda: self.run_ocr_capture(),
             "Clipboard History": lambda: self.stack.slide_to(7),
-            "Settings": lambda: self.stack.slide_to(8),
+            "Activity & Undo": lambda: self.stack.slide_to(ACTIVITY_PAGE_INDEX),
+            "Workflows": lambda: self.stack.slide_to(WORKFLOWS_PAGE_INDEX),
+            "Memory": lambda: self.stack.slide_to(MEMORY_PAGE_INDEX),
+            "Reminders": lambda: self.stack.slide_to(REMINDERS_PAGE_INDEX),
+            "Notes & To-dos": lambda: self.stack.slide_to(NOTES_TODOS_PAGE_INDEX),
+            "Calendar": lambda: self.stack.slide_to(CALENDAR_PAGE_INDEX),
+            "Skills": lambda: self.stack.slide_to(SKILLS_PAGE_INDEX),
+            "Performance": lambda: self.stack.slide_to(PERFORMANCE_PAGE_INDEX),
+            "Settings": lambda: self.stack.slide_to(SETTINGS_PAGE_INDEX),
             "Toggle Mic": self.toggle_mic,
             "Clear Chat": self.clear_chat,
             "Take Screenshot": lambda: self._run_action(AppController.take_screenshot),
-            "Lock PC": lambda: os.system("rundll32.exe user32.dll,LockWorkStation"),
+            "Lock PC": lambda: AppController.lock_pc(),
             "Focus Mode": self.toggle_focus,
             "Save Settings": self.save_settings,
             "Load Settings": self.load_settings,
@@ -2979,6 +725,15 @@ class MainWindow(QMainWindow):
         self.mic_mini_lbl.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 10.5px; font-weight: 700; background: transparent;")
         v.addWidget(self.mic_mini_lbl)
 
+        # Tier 19: thread_supervisor's own health dot - see
+        # _refresh_health_dot() for what makes it change color. Starts
+        # exactly like mic_mini_lbl above (neutral dot, "OK") since nothing
+        # has been watched yet this early in __init__.
+        self.health_dot_lbl = QLabel("●  SYSTEMS OK")
+        self.health_dot_lbl.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 10.5px; font-weight: 700; background: transparent;")
+        self.health_dot_lbl.setToolTip("All background workers running normally.")
+        v.addWidget(self.health_dot_lbl)
+
         # Stagger animation on show
         QTimer.singleShot(100, lambda: Anim.stagger_show(self.nav_buttons, 40, 200))
         
@@ -2992,6 +747,8 @@ class MainWindow(QMainWindow):
             self.nav_buttons[idx].setChecked(True)
         if idx == 0:
             QTimer.singleShot(80, self._refresh_dashboard_previews)
+        if idx == ACTIVITY_PAGE_INDEX:
+            QTimer.singleShot(0, self._refresh_activity_page)
     
     def _make_back_row(self, title, subtitle=""):
         wrap = QWidget()
@@ -3048,30 +805,6 @@ class MainWindow(QMainWindow):
             grid.addWidget(tile, row, col)
             self._dashboard_tiles.append((tile, target_idx))
         v.addLayout(grid)
-        
-    def _build_home_dashboard(self):
-        wrap = QWidget()
-        v = QVBoxLayout(wrap)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(16)
-        
-        v.addWidget(make_section_heading("QUICK ACCESS", self.theme))
-        
-        grid = QGridLayout()
-        grid.setSpacing(14)
-        cols = 4
-        self._dashboard_tiles = []
-        for i, (label, icon_name, idx) in enumerate(NAV_ITEMS[1:]):
-            target_idx = idx
-            tile = DashboardTile(ICON_MAP.get(icon_name, "⬜"), label, self.theme)
-            tile.clicked.connect(lambda idx=target_idx: self.stack.slide_to(idx))
-            row, col = divmod(i, cols)
-            grid.addWidget(tile, row, col)
-            self._dashboard_tiles.append((tile, target_idx))
-        v.addLayout(grid)
-        
-        v.addStretch()
-        return wrap
         
         v.addStretch()
         return wrap
@@ -3184,6 +917,21 @@ class MainWindow(QMainWindow):
         h.addWidget(btn_clear)
         v.addWidget(header)
 
+        # Tier 21: live activity banner - "⚙ Doing: X" while a tool call is
+        # running (see tool_activity signal / _on_tool_activity). Hidden by
+        # default; this page already has a live transcript (captions) and a
+        # real waveform (self.visualizer below) from earlier tiers - this is
+        # the one piece that was still missing: visibility into WHAT Wave is
+        # currently doing to the system, not just that it's listening/typing.
+        self.activity_banner = QLabel("")
+        self.activity_banner.setObjectName("LiveActivityBanner")
+        self.activity_banner.setVisible(False)
+        self.activity_banner.setStyleSheet(f"""
+            background: {self.theme.accent_1}18; color: {self.theme.accent_1};
+            padding: 6px 22px; font-size: 11px; font-weight: 700;
+        """)
+        v.addWidget(self.activity_banner)
+
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
         self.chat_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
@@ -3269,7 +1017,9 @@ class MainWindow(QMainWindow):
         self.btn_send.setFixedSize(42, 42)
         self.btn_send.setCursor(Qt.CursorShape.PointingHandCursor)
         Icon.set_btn_icon(self.btn_send, "send", "#000000", 20)
-        self.btn_send.clicked.connect(self.send_message)
+        # Tier 19: doubles as a Stop button while a reply is streaming -
+        # see _set_send_button_stop_mode()/_on_send_btn_clicked().
+        self.btn_send.clicked.connect(self._on_send_btn_clicked)
 
         input_row.addWidget(self.btn_attach, 0, Qt.AlignmentFlag.AlignBottom)
         input_row.addWidget(self.btn_mic_inline, 0, Qt.AlignmentFlag.AlignBottom)
@@ -3618,7 +1368,7 @@ class MainWindow(QMainWindow):
         pc_grid = QGridLayout()
         pc_grid.setSpacing(10)
         actions = [
-            ("Lock", "lock", lambda: os.system("rundll32.exe user32.dll,LockWorkStation")),
+            ("Lock", "lock", lambda: AppController.lock_pc()),
             ("Screenshot", "camera", lambda: self._run_action(AppController.take_screenshot)),
             ("Delete Last SS", "trash", lambda: self._run_action(AppController.delete_latest_screenshot)),
             ("Mute OS", "volume-mute", lambda: pyautogui.press('volumemute')),
@@ -4095,7 +1845,7 @@ class MainWindow(QMainWindow):
             menu.addAction("Open in Terminal", lambda: self._run_action(AppController.open_terminal_at, path))
             menu.addAction("Open in VS Code", lambda: self._run_action(AppController.open_in_vscode, path))
         else:
-            menu.addAction("Open", lambda: os.startfile(path))
+            menu.addAction("Open", lambda: AppController.open_path(path))
             menu.addAction("Open With...", lambda: os.system(f'rundll32.exe shell32.dll,OpenAs_RunDLL "{path}"'))
             menu.addAction("Copy Path", lambda: pyperclip.copy(path) if HAS_PYPERCLIP else None)
             menu.addAction("Delete", lambda: self._delete_file(path))
@@ -4111,10 +1861,18 @@ class MainWindow(QMainWindow):
             try:
                 if os.path.isdir(path):
                     import shutil
-                    shutil.rmtree(path)
+                    with audit_mod.audit.action("delete_folder", {"folder_name": os.path.basename(path),
+                                                                  "path": os.path.dirname(path)}, source="ui") as act:
+                        shutil.rmtree(path)
+                        act.ok(f"Deleted folder '{os.path.basename(path)}' (permanently).")
+                    self.toast.show("Folder deleted (folders can't be undone)", "success")
                 else:
-                    os.remove(path)
-                self.toast.show("Deleted", "success")
+                    # Files go to Wave's recoverable trash - see the Activity page to undo.
+                    msg = FileManager.delete_file(os.path.basename(path), os.path.dirname(path))
+                    if msg.startswith("Deleted"):
+                        self.toast.show("Deleted - you can undo it from Activity", "success")
+                    else:
+                        self.toast.show(msg, "error")
             except Exception as e:
                 self.toast.show(f"Error: {e}", "error")
     
@@ -4128,7 +1886,7 @@ class MainWindow(QMainWindow):
             self.files_navigate_to(path)
         else:
             try:
-                os.startfile(path)
+                AppController.open_path(path)
             except Exception as e:
                 logger.error(f"Open file error: {e}")
                 self.toast.show(f"Error opening file: {e}", "error")
@@ -4216,6 +1974,210 @@ class MainWindow(QMainWindow):
         worker.signals.error.connect(lambda e: self.vision_result.setPlainText(f"Error: {e}"))
     
     # ==================== CLIPBOARD PAGE ====================
+    # ==================== ACTIVITY PAGE (Phase 4: audit + undo) ====================
+    def _build_activity_page(self):
+        page = QWidget()
+        page.setObjectName("PageBg")
+        v = QVBoxLayout(page)
+        v.setContentsMargins(32, 28, 32, 28)
+        v.setSpacing(20)
+        v.addWidget(self._make_back_row("Activity", "Everything Wave did, newest first — file changes can be undone with one click"))
+
+        panel = QFrame()
+        panel.setProperty("class", "Panel")
+        add_shadow(panel)
+        pv = QVBoxLayout(panel)
+        pv.setContentsMargins(26, 24, 26, 24)
+
+        head = QHBoxLayout()
+        head.addWidget(make_section_heading("RECENT ACTIONS", self.theme))
+        head.addStretch()
+        self.btn_undo_last = QPushButton("Undo last")
+        self.btn_undo_last.setProperty("class", "ActionBtn")
+        self.btn_undo_last.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_undo_last.clicked.connect(self._undo_last_clicked)
+        head.addWidget(self.btn_undo_last)
+        self.btn_empty_trash = QPushButton("Empty trash")
+        self.btn_empty_trash.setProperty("class", "ActionBtn")
+        self.btn_empty_trash.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_empty_trash.clicked.connect(self._empty_trash_clicked)
+        head.addWidget(self.btn_empty_trash)
+        pv.addLayout(head)
+
+        self.activity_note = QLabel("")
+        self.activity_note.setWordWrap(True)
+        self.activity_note.setStyleSheet(f"color: {self.theme.text_faint}; font-size: 11px;")
+        pv.addWidget(self.activity_note)
+        pv.addSpacing(8)
+
+        self.activity_list_layout = QVBoxLayout()
+        self.activity_list_layout.setSpacing(8)
+        pv.addLayout(self.activity_list_layout)
+        pv.addStretch()
+        v.addWidget(panel, 1)
+        self._activity_dirty = False
+        self._refresh_activity_page()
+        return page
+
+    def _make_activity_row(self, rec):
+        t = self.theme
+        entry = QFrame()
+        entry.setStyleSheet(f"background-color: {t.bg_surface}; border-radius: 12px; border: 1px solid {t.border};")
+        row = QHBoxLayout(entry)
+        row.setContentsMargins(14, 10, 10, 10)
+        row.setSpacing(12)
+        mark, color = {"ok": ("✓", t.success), "failed": ("✗", t.danger),
+                       "blocked": ("⛔", t.warning)}.get(rec.status, ("•", t.text_faint))
+        dot = QLabel(mark)
+        dot.setFixedWidth(18)
+        dot.setStyleSheet(f"color: {color}; font-size: 14px; font-weight: 700; background: transparent; border: none;")
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        title = QLabel(rec.summary())
+        title.setWordWrap(True)
+        title.setStyleSheet(f"color: {t.text_main}; font-size: 12px; font-weight: 600; background: transparent; border: none;")
+        detail = rec.result if len(rec.result) <= 110 else rec.result[:107] + "..."
+        sub = QLabel(f"{rec.time_text}  ·  {rec.source}" + (f"  ·  {detail}" if detail else ""))
+        sub.setWordWrap(True)
+        sub.setStyleSheet(f"color: {t.text_faint}; font-size: 11px; background: transparent; border: none;")
+        text.addWidget(title)
+        text.addWidget(sub)
+        row.addWidget(dot)
+        row.addLayout(text, 1)
+        if rec.reversible:
+            btn = QPushButton("Undo")
+            btn.setProperty("class", "ActionBtn")
+            btn.setFixedWidth(70)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(rec.undo_label or "Undo this action")
+            btn.clicked.connect(lambda _=False, rid=rec.id: self._undo_clicked(rid))
+            row.addWidget(btn)
+        elif rec.undone_at:
+            done = QLabel("Undone")
+            done.setStyleSheet(f"color: {t.text_faint}; font-size: 11px; background: transparent; border: none;")
+            row.addWidget(done)
+        return entry
+
+    def _refresh_activity_page(self):
+        layout = getattr(self, "activity_list_layout", None)
+        if layout is None:
+            return
+        self._activity_dirty = False
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        rows = audit_mod.audit.recent(60)
+        if not rows:
+            empty = QLabel("Nothing yet. Ask Wave to create a file or open an app and it will show up here.")
+            empty.setWordWrap(True)
+            empty.setStyleSheet(f"color: {self.theme.text_faint}; font-size: 12px; padding: 20px;")
+            layout.addWidget(empty)
+        for rec in rows:
+            layout.addWidget(self._make_activity_row(rec))
+        self.btn_undo_last.setEnabled(any(r.reversible for r in rows))
+        self._update_trash_note()
+
+    def _update_trash_note(self):
+        if not undo_mod.trash_enabled():
+            text = "Undo for deleted files is switched off (UNDO_TRASH_ENABLED=false in .env), so deletes are permanent."
+        else:
+            mb = undo_mod.trash.size_bytes() / (1024 * 1024)
+            days = undo_mod.trash.retention_days
+            text = (f"Deleted files wait in Wave's trash for {days} day{'s' if days != 1 else ''} "
+                    f"before they're gone for good ({mb:.1f} MB there now).")
+        self.activity_note.setText(text)
+
+    def _on_audit_event(self):
+        page = getattr(self, "_activity_page", None)
+        if page is None:
+            return
+        if page.isVisible():
+            self._refresh_activity_page()
+        else:
+            self._activity_dirty = True     # refreshed when the page is opened
+
+    # Tier 21: live activity banner (see the tool_activity signal's own
+    # comment and automation/audit.py's "started" event docstring).
+    def _on_audit_activity_event(self, event, rec):
+        """Runs on whatever thread the tool call is happening on - only
+        ever does a thread-safe .emit(), same rule every other cross-thread
+        audit/proactive/ollama listener in this file follows."""
+        if event == "started" and rec is not None:
+            try:
+                description = audit_mod.summarize(rec.tool, rec.args)
+            except Exception:
+                description = rec.tool
+            self.tool_activity.emit(description)
+
+    def _on_tool_activity(self, description: str):
+        banner = getattr(self, "activity_banner", None)
+        if banner is None:
+            return
+        banner.setText(f"⚙  {description}…")
+        banner.setVisible(True)
+        # Auto-hide rather than waiting for a "finished" counterpart: most
+        # tool calls finish in well under this window, and some (quiet
+        # tools, joined child scopes - see add_listener's docstring) never
+        # produce a second event at all. Each new "started" restarts this
+        # timer, so a banner showing a slow action's description just keeps
+        # refreshing instead of flickering off mid-action.
+        self._activity_banner_timer_gen = getattr(self, "_activity_banner_timer_gen", 0) + 1
+        my_gen = self._activity_banner_timer_gen
+        QTimer.singleShot(4000, lambda: self._hide_activity_banner_if_current(my_gen))
+
+    def _hide_activity_banner_if_current(self, gen: int):
+        if gen == getattr(self, "_activity_banner_timer_gen", None):
+            banner = getattr(self, "activity_banner", None)
+            if banner is not None:
+                banner.setVisible(False)
+
+    def _undo_clicked(self, action_id):
+        worker = self.worker_pool.submit(undo_mod.undo_manager.undo, action_id, "ui")
+        worker.signals.result.connect(self._on_undo_result)
+        worker.signals.error.connect(lambda e: self.toast.show(f"Error: {e}", "error"))
+
+    def _undo_last_clicked(self):
+        rec = audit_mod.audit.last_reversible()
+        if rec is None:
+            self.toast.show("There's nothing to undo right now.", "info")
+            return
+        self._undo_clicked(rec.id)
+
+    def _on_undo_result(self, result):
+        self.toast.show(result.message, "success" if result.ok else "warning", duration=5000)
+        self._refresh_activity_page()
+
+    def _empty_trash_clicked(self):
+        reply = QMessageBox.question(self, "Empty trash",
+                                     "Permanently delete everything in Wave's trash? Earlier deletions can't be undone afterwards.",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            count = undo_mod.trash.empty()
+            self.toast.show(f"Trash emptied ({count} item{'s' if count != 1 else ''}).", "success")
+            self._update_trash_note()
+
+    # ==================== HOT-RELOAD SKILLS (Phase 4) ====================
+    def _start_skill_watcher(self):
+        try:
+            loader = get_loader()
+            loader.add_listener(lambda ev: self.skill_event.emit(ev.kind, ev.message()))
+            loader.start(watch=config.SKILLS_HOT_RELOAD)
+            if config.SKILLS_HOT_RELOAD:
+                # Tier 19: only worth watching (and restarting) if it was
+                # actually asked to watch in the first place - load_now()
+                # above already ran its one-shot scan either way, but with
+                # watch=False there's no background thread here at all for
+                # is_alive() to report on.
+                thread_supervisor.watch("skill_loader", loader)
+        except Exception as e:
+            logging.getLogger("MainWindow").error(f"Couldn't start the skills watcher: {e}")
+
+    def _on_skill_event(self, kind, message):
+        icon = {"loaded": "success", "reloaded": "success", "unloaded": "info", "error": "warning"}.get(kind, "info")
+        self.toast.show(message, icon, duration=6000 if kind == "error" else 3500)
+
     def _build_clipboard_page(self):
         page = QWidget()
         page.setObjectName("PageBg")
@@ -4287,6 +2249,29 @@ class MainWindow(QMainWindow):
             if item.widget():
                 item.widget().deleteLater()
     
+    # ==================== WORKFLOWS PAGE (Tier 3 item 9) ====================
+    def _build_workflows_page(self):
+        return WorkflowsPanel(self, self.theme)
+
+    # ==================== TIER 21 MANAGEMENT PAGES ====================
+    def _build_memory_page(self):
+        return MemoryPanel(self, self.theme)
+
+    def _build_reminders_page(self):
+        return RemindersPanel(self, self.theme)
+
+    def _build_notes_todos_page(self):
+        return NotesTodosPanel(self, self.theme)
+
+    def _build_calendar_page(self):
+        return CalendarPanel(self, self.theme)
+
+    def _build_skills_page(self):
+        return SkillsPanel(self, self.theme)
+
+    def _build_performance_page(self):
+        return PerformancePanel(self, self.theme)
+
     # ==================== SETTINGS PAGE ====================
     def _build_settings_page(self):
         return SettingsPanel(self, self.theme)
@@ -4324,12 +2309,60 @@ class MainWindow(QMainWindow):
                 logger.error(f"Brightness error: {e}")
     
     def save_settings(self):
+        sp = getattr(self, "settings_panel", None)
         data = {
-            "notes": self.sticky_note.toPlainText() if hasattr(self, 'sticky_note') else "",
+            "notes": sp.sticky_note.toPlainText() if sp and hasattr(sp, 'sticky_note') else "",
             "focus_mode": self.focus_mode,
         }
         if HAS_PYCAW and hasattr(self, "vol_slider"):
             data["volume"] = self.vol_slider.value()
+        if sp:
+            if hasattr(sp, "cb_clipboard"):
+                data["clipboard_monitoring"] = sp.cb_clipboard.isChecked()
+            if hasattr(sp, "cb_screen"):
+                data["screen_capture_allowed"] = sp.cb_screen.isChecked()
+            if hasattr(sp, "cb_chat_history"):
+                data["save_chat_history"] = sp.cb_chat_history.isChecked()
+            if hasattr(sp, "cb_notifications"):
+                data["notifications_enabled"] = sp.cb_notifications.isChecked()
+            if hasattr(sp, "cb_usage_stats"):
+                data["usage_stats_enabled"] = sp.cb_usage_stats.isChecked()
+            # Tier 20: Security page
+            if hasattr(sp, "security_mode_combo"):
+                data["security_mode"] = sp.security_mode_combo.currentText()
+            if hasattr(sp, "cb_redact_secrets"):
+                data["redact_secrets"] = sp.cb_redact_secrets.isChecked()
+            # ── Voice settings ──
+            if hasattr(sp, "tts_combo"):
+                data["tts_voice"] = sp.tts_combo.currentText()
+            if hasattr(sp, "rate_slider"):
+                data["tts_rate"] = sp.rate_slider.value()
+            if hasattr(sp, "tts_vol_slider"):
+                data["tts_volume"] = sp.tts_vol_slider.value()
+            if hasattr(sp, "wake_combo"):
+                data["wake_word_label"] = sp.wake_combo.currentText()
+                data["wake_phrases"] = self.wake_phrases
+            if hasattr(sp, "stt_lang"):
+                data["stt_lang"] = sp.stt_lang.currentText()
+            # Tier 11: wake word detection mode + sensitivity
+            if hasattr(sp, "wake_engine_combo"):
+                data["wake_engine"] = sp.wake_engine_combo.currentText()
+            if getattr(sp, "_wake_threshold_touched", False) and hasattr(sp, "wake_sens_slider"):
+                data["wake_sensitivity"] = sp.wake_sens_slider.value()
+            if hasattr(sp, "cb_local_voice"):
+                data["tts_local_auto_download"] = sp.cb_local_voice.isChecked()
+            # Tier 23: remote dashboard
+            if hasattr(sp, "cb_remote_dashboard"):
+                data["remote_dashboard_enabled"] = sp.cb_remote_dashboard.isChecked()
+            if hasattr(sp, "remote_port_spin"):
+                data["remote_dashboard_port"] = sp.remote_port_spin.value()
+            # Tier 25: avatar companion startup toggles - the photo/voice
+            # path fields themselves are deliberately NOT saved here, see
+            # SettingsPanel._build_avatar_page()'s own docstring for why.
+            if hasattr(sp, "cb_avatar_show"):
+                data["avatar_show_on_startup"] = sp.cb_avatar_show.isChecked()
+            if hasattr(sp, "cb_avatar_show_dashboard"):
+                data["avatar_show_dashboard_on_startup"] = sp.cb_avatar_show_dashboard.isChecked()
         try:
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f)
@@ -4337,23 +2370,297 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Save settings error: {e}")
             self.toast.show("Could not save settings", "error")
-    
-    def load_settings(self):
+
+    def load_settings(self, silent=False):
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if hasattr(self, 'sticky_note'):
-                self.sticky_note.setPlainText(data.get("notes", ""))
+            sp = getattr(self, "settings_panel", None)
+            if sp and hasattr(sp, 'sticky_note'):
+                sp.sticky_note.setPlainText(data.get("notes", ""))
             if "volume" in data and HAS_PYCAW and hasattr(self, "vol_slider"):
                 self.vol_slider.setValue(data["volume"])
-            self.toast.show("Settings loaded", "success")
+            if sp:
+                # Privacy toggles
+                if hasattr(sp, "cb_clipboard"):
+                    sp.cb_clipboard.setChecked(data.get("clipboard_monitoring", True))
+                if hasattr(sp, "cb_screen"):
+                    sp.cb_screen.setChecked(data.get("screen_capture_allowed", True))
+                if hasattr(sp, "cb_chat_history"):
+                    sp.cb_chat_history.setChecked(data.get("save_chat_history", True))
+                if hasattr(sp, "cb_notifications"):
+                    sp.cb_notifications.setChecked(data.get("notifications_enabled", True))
+                if hasattr(sp, "cb_usage_stats"):
+                    sp.cb_usage_stats.setChecked(data.get("usage_stats_enabled", False))
+                # Tier 20: Security page - setCurrentText fires
+                # _on_security_mode_changed, which applies it immediately.
+                if "security_mode" in data and hasattr(sp, "security_mode_combo"):
+                    sp.security_mode_combo.setCurrentText(data["security_mode"])
+                if "redact_secrets" in data and hasattr(sp, "cb_redact_secrets"):
+                    sp.cb_redact_secrets.setChecked(data["redact_secrets"])
+                # Voice settings — setCurrentText/setValue fires the
+                # change handlers which apply the value to tts_engine/
+                # stt_engine immediately. wake_combo uses blockSignals
+                # so we don't pop the "type a custom phrase" dialog on
+                # every single startup.
+                if "tts_voice" in data and hasattr(sp, "tts_combo"):
+                    sp.tts_combo.setCurrentText(data["tts_voice"])
+                if "tts_rate" in data and hasattr(sp, "rate_slider"):
+                    sp.rate_slider.setValue(data["tts_rate"])
+                if "tts_volume" in data and hasattr(sp, "tts_vol_slider"):
+                    sp.tts_vol_slider.setValue(data["tts_volume"])
+                if "stt_lang" in data and hasattr(sp, "stt_lang"):
+                    sp.stt_lang.setCurrentText(data["stt_lang"])
+                if hasattr(sp, "wake_combo"):
+                    if "wake_phrases" in data:
+                        self.wake_phrases = data["wake_phrases"]
+                        if self.mic_worker:
+                            self.mic_worker.set_wake_phrases(self.wake_phrases)
+                    if "wake_word_label" in data:
+                        sp.wake_combo.blockSignals(True)
+                        sp.wake_combo.setCurrentText(data["wake_word_label"])
+                        sp.wake_combo.blockSignals(False)
+                if "wake_engine" in data and hasattr(sp, "wake_engine_combo"):
+                    sp.wake_engine_combo.setCurrentText(data["wake_engine"])
+                if "wake_sensitivity" in data and hasattr(sp, "wake_sens_slider"):
+                    sp.wake_sens_slider.setValue(int(data["wake_sensitivity"]))
+                if hasattr(sp, "_refresh_wake_status"):
+                    sp._refresh_wake_status()
+                if "tts_local_auto_download" in data and hasattr(sp, "cb_local_voice"):
+                    sp.cb_local_voice.setChecked(data["tts_local_auto_download"])
+                # Tier 23: remote dashboard - port MUST be set before the
+                # checkbox, since checking it fires _on_remote_dashboard_
+                # toggled -> start_remote_dashboard(self.remote_port_spin.
+                # value()) immediately.
+                if "remote_dashboard_port" in data and hasattr(sp, "remote_port_spin"):
+                    sp.remote_port_spin.setValue(int(data["remote_dashboard_port"]))
+                if data.get("remote_dashboard_enabled") and hasattr(sp, "cb_remote_dashboard"):
+                    sp.cb_remote_dashboard.setChecked(True)
+                # Tier 25: avatar companion startup toggles
+                if hasattr(sp, "cb_avatar_show"):
+                    sp.cb_avatar_show.setChecked(data.get("avatar_show_on_startup", True))
+                if hasattr(sp, "cb_avatar_show_dashboard"):
+                    sp.cb_avatar_show_dashboard.setChecked(data.get("avatar_show_dashboard_on_startup", False))
+            if not silent:
+                self.toast.show("Settings loaded", "success")
         except FileNotFoundError:
-            self.toast.show("No saved settings found", "info")
+            if not silent:
+                self.toast.show("No saved settings found", "info")
         except Exception as e:
             logger.error(f"Load settings error: {e}")
-            self.toast.show("Could not load settings", "error")
+            if not silent:
+                self.toast.show("Could not load settings", "error")
     
+    # ==================== REMOTE DASHBOARD (Tier 23) ====================
+    def _get_remote_dashboard(self):
+        """Lazily imports remote.runner and constructs self.remote_
+        dashboard on first use - see the comment on self.remote_dashboard
+        in __init__ for why this isn't done eagerly."""
+        if self.remote_dashboard is None:
+            from remote.runner import RemoteDashboardServer
+            self.remote_dashboard = RemoteDashboardServer(self.brain, assistant_name="Wave")
+        return self.remote_dashboard
+
+    def start_remote_dashboard(self, port: int):
+        """Runs the actual start() off the GUI thread (same worker_pool
+        every other settings-page "do a thing, then update a label" action
+        already uses, e.g. _test_provider_clicked) and reports back to
+        the Remote settings page once it's done."""
+        server = self._get_remote_dashboard()
+        worker = self.worker_pool.submit(server.start, host="0.0.0.0", port=port)
+        worker.signals.result.connect(self._on_remote_dashboard_start_result)
+        worker.signals.error.connect(lambda e: self._on_remote_dashboard_start_result((False, str(e))))
+
+    def _on_remote_dashboard_start_result(self, result):
+        ok, message = result
+        sp = getattr(self, "settings_panel", None)
+        if sp and hasattr(sp, "show_remote_dashboard_result"):
+            sp.show_remote_dashboard_result(ok, message)
+        if hasattr(self, "toast"):
+            self.toast.show(message, "success" if ok else "error")
+
+    # ==================== AVATAR COMPANION (Tier 25) ====================
+    # avatar/window.py (the floating widget) + avatar/state.py (the state
+    # machine) + avatar/control.py (the Qt-thread-safety seam show_ui/
+    # hide_ui call into) - see docs/ROADMAP_BEAT_SARA.md's Tier 25 section
+    # and avatar/control.py's own docstring for the full picture. Every
+    # method below is a thin no-op when self.avatar_window is None (no rig
+    # built yet), so none of this changes behaviour for a Wave install
+    # that never sets a photo up - the dashboard still starts minimized
+    # exactly as it always has.
+    def _init_avatar(self):
+        """Builds the avatar window + state machine + controller if
+        avatar/rig.py has an actual rig to show (i.e. the user has set up
+        a photo - see the Settings -> Avatar page's "Build avatar"
+        button), reads the avatar_* toggles straight out of SETTINGS_FILE
+        (not through settings_panel - this must work even before that
+        panel's widgets exist), and shows the avatar window itself if the
+        "show avatar on startup" toggle says to. Whether the DASHBOARD
+        window should start hidden is read back afterwards via
+        should_start_hidden() - wave_start.pyw decides between hide() and
+        the pre-Tier-25 showMinimized() based on that, not on anything
+        done directly here."""
+        self.avatar_state_machine = AvatarStateMachine()
+        self.avatar_window = AvatarWindow(AVATAR_RIG_DIR, self.avatar_state_machine)
+        if not self.avatar_window.has_rig():
+            # Nothing built yet - leave the window instance around (so a
+            # later "Build avatar" in Settings can show() it without a
+            # restart) but don't show it, and don't register a controller:
+            # get_active_controller() returning None is show_ui/hide_ui's
+            # own signal that avatar mode isn't live yet.
+            logger.info("Tier 25: no avatar rig built yet - dashboard starts as before.")
+            return
+        self.avatar_controller = AvatarController(self, self.avatar_window)
+        set_active_controller(self.avatar_controller)
+        data = self._read_settings_file()
+        if data.get("avatar_show_on_startup", True):
+            self.avatar_window.show()
+        # Restore a previously-set voice-clone reference, if any. This is
+        # NOT the same thing _build_avatar_page()'s docstring means by "the
+        # path fields aren't restored" - that's about the Settings page's
+        # two file-picker QLineEdits, which genuinely don't need their old
+        # text back. This is the reference clip build_avatar_from_files()
+        # actually pointed the TTS engine at, and without restoring it here
+        # too, a user who clones their voice once would silently lose that
+        # clone on every single restart (falling back to edge-tts with no
+        # indication why) until they re-ran "Build avatar" from scratch -
+        # found while running this tier against a real photo/voice sample
+        # for the first time, not caught by the mocked tests, which never
+        # exercise a second process start.
+        ref_path = (data.get("avatar_voice_reference_path") or "").strip()
+        if ref_path and os.path.exists(ref_path):
+            config.TTS_CLONE_REFERENCE_PATH = ref_path
+            logger.info("Tier 25: restored voice-clone reference from a previous session.")
+        elif ref_path:
+            logger.warning(
+                f"Tier 25: previously-set voice-clone reference '{ref_path}' is gone - "
+                "falling back to edge-tts/Piper/Kokoro until 'Build avatar' is run again."
+            )
+        logger.info("Tier 25: avatar companion active.")
+
+    def _read_settings_file(self) -> dict:
+        """Tiny helper so _init_avatar() (which must run before
+        settings_panel's widgets necessarily exist) and load_settings()
+        don't each open SETTINGS_FILE their own slightly-different way."""
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def should_start_hidden(self) -> bool:
+        """Called once by wave_start.pyw right after construction. True
+        only when the avatar is actually live (a rig exists) AND the
+        "show dashboard on startup" toggle is off (the default) - every
+        other case (no rig yet, or the user explicitly wants the
+        dashboard up too) keeps the original showMinimized() behaviour,
+        so there is never a run where NEITHER the avatar NOR the
+        dashboard is visible."""
+        if not (self.avatar_window and self.avatar_window.has_rig()):
+            return False
+        return not self._read_settings_file().get("avatar_show_dashboard_on_startup", False)
+
+    def build_avatar_from_files(self, photo_path: str, voice_sample_path: str = "") -> str:
+        """Settings -> Avatar page's "Build avatar" button. Runs avatar/
+        rig.py's build_rig() against the given photo (synchronously - it's
+        a handful of OpenCV calls on one image, not worth a worker thread)
+        and, if this is the first successful build this run, constructs
+        the avatar window/state machine/controller immediately so the
+        avatar appears without restarting Wave. If voice_sample_path is
+        also given, points voice/tts.py's cloning engine (Tier 25's 4th
+        TTS option) at it - see settings/config.py's TTS_CLONE_* docstring
+        for why just setting this path IS the opt-in, no separate consent
+        flag needed - and clears any previously cached load failure so a
+        freshly-picked file gets its own fair attempt rather than reusing
+        a verdict from a stale or missing one."""
+        try:
+            avatar_rig.build_rig(photo_path, AVATAR_RIG_DIR)
+        except avatar_rig.RigBuildError as e:
+            return f"Avatar nahi ban paya: {e}"
+        except Exception as e:
+            logger.error(f"build_avatar_from_files error: {e}")
+            return f"Avatar nahi ban paya: {e}"
+        if self.avatar_window is None or not self.avatar_window.has_rig():
+            self._init_avatar()
+        else:
+            self.avatar_window._load_rig()  # re-pull the freshly-written frames
+            self.avatar_window._apply_frame("neutral")
+        if self.avatar_window and not self.avatar_window.isVisible():
+            self.avatar_window.show()
+        voice_sample_path = (voice_sample_path or "").strip()
+        voice_note = ""
+        if voice_sample_path:
+            if os.path.exists(voice_sample_path):
+                config.TTS_CLONE_REFERENCE_PATH = voice_sample_path
+                tts_engine._clone_engine = None
+                tts_engine._clone_load_failed = False
+                # Persisted separately from the file-picker fields (see
+                # _build_avatar_page()'s docstring) - this is the actual
+                # reference clip the TTS engine now depends on, so it has
+                # to survive a restart or voice cloning silently reverts
+                # to edge-tts the next time Wave starts. Restored by
+                # _init_avatar() above.
+                self._persist_settings_key("avatar_voice_reference_path", voice_sample_path)
+                voice_note = " Aapki awaz clone hone ke liye set ho gayi hai."
+            else:
+                voice_note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"
+        return "Avatar ban gaya aur dikhayi de raha hai." + voice_note
+
+    def _persist_settings_key(self, key: str, value) -> None:
+        """Updates one key in SETTINGS_FILE without needing settings_panel's
+        widgets (save_settings() is widget-driven and can't carry a value
+        that has no corresponding control) - a small read-modify-write,
+        same file save_settings()/load_settings()/_read_settings_file()
+        already share."""
+        data = self._read_settings_file()
+        data[key] = value
+        try:
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error(f"_persist_settings_key('{key}') error: {e}")
+
+    def _avatar_on_reply_started(self):
+        if self.avatar_state_machine is not None:
+            self.avatar_state_machine.on_reply_started()
+
+    def _avatar_on_reply_done_without_speech(self):
+        if self.avatar_state_machine is not None:
+            self.avatar_state_machine.on_reply_done_without_speech()
+
+    def _avatar_on_speech_started(self):
+        if self.avatar_state_machine is not None:
+            self.avatar_state_machine.on_speech_started()
+
+    def _avatar_on_speech_stopped(self):
+        if self.avatar_state_machine is not None:
+            self.avatar_state_machine.on_speech_stopped()
+
+    def _avatar_on_mic_mode_changed(self, mode: str):
+        if self.avatar_state_machine is not None:
+            self.avatar_state_machine.on_mic_mode_changed(mode)
+
+    def stop_remote_dashboard(self):
+        if self.remote_dashboard is not None:
+            self.worker_pool.submit(self.remote_dashboard.stop)
+
+    def regenerate_remote_pairing(self):
+        if self.remote_dashboard is None:
+            return
+        self.remote_dashboard.regenerate_pairing()
+        sp = getattr(self, "settings_panel", None)
+        if sp and hasattr(sp, "refresh_remote_pairing_display"):
+            sp.refresh_remote_pairing_display()
+        if hasattr(self, "toast"):
+            self.toast.show("New pairing code - every previously paired phone was signed out", "info")
+
+    def remote_pairing_info(self):
+        if self.remote_dashboard is None:
+            return None
+        return self.remote_dashboard.pairing_info()
+
     def clear_chat(self):
+        self._cancel_reply()
         for i in reversed(range(self.chat_layout.count())):
             widget = self.chat_layout.itemAt(i).widget()
             if widget is not None:
@@ -4362,21 +2669,32 @@ class MainWindow(QMainWindow):
         self._last_sender = None
         self.add_chat_bubble("Chat cleared. Fresh start!", is_user=False)
     
+    def _bubble_max_width(self, text):
+        """Code needs room - a bubble with a fenced block gets most of the
+        chat's width, a plain one about two thirds of it."""
+        has_code = "```" in (text or "")
+        width_ratio = 0.88 if has_code else 0.68
+        if not hasattr(self, "chat_scroll"):
+            return 420
+        return int(min(720, max(260, self.chat_scroll.width() * width_ratio)))
+
+    def _scroll_chat_to_bottom(self, delay_ms: int = 80):
+        if not hasattr(self, "chat_scroll"):
+            return
+        QTimer.singleShot(delay_ms, lambda: self.chat_scroll.verticalScrollBar().setValue(
+            self.chat_scroll.verticalScrollBar().maximum()
+        ))
+
     def add_chat_bubble(self, text, is_user=True, attachment=None):
-        # Message grouping: if same sender as last, append to previous bubble
-        if self._last_sender == ("user" if is_user else "ai") and self._chat_messages:
-            last_bubble = self._chat_messages[-1]
-            # Could merge here - for now create new
-            pass
-        
+        """Adds a message bubble and returns it (Tier 11: a streamed reply
+        keeps the handle and grows it with ChatBubble.set_text())."""
+        text = text or ""
         row_widget = QWidget()
         row_widget.setStyleSheet("background: transparent;")
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
 
-        has_code = "```" in text
-        width_ratio = 0.88 if has_code else 0.68
-        max_w = int(min(720, max(260, self.chat_scroll.width() * width_ratio))) if hasattr(self, 'chat_scroll') else 420
+        max_w = self._bubble_max_width(text)
         bubble = ChatBubble(
             text, is_user=is_user, max_width=max_w,
             on_replay=(None if is_user else self.start_speaking),
@@ -4394,11 +2712,9 @@ class MainWindow(QMainWindow):
         self.chat_layout.addWidget(row_widget)
         self._chat_messages.append(bubble)
         self._last_sender = "user" if is_user else "ai"
-        
-        QTimer.singleShot(80, lambda: self.chat_scroll.verticalScrollBar().setValue(
-            self.chat_scroll.verticalScrollBar().maximum()
-        ))
-    
+        self._scroll_chat_to_bottom()
+        return bubble
+
     def _on_bubble_reaction(self, reaction: str):
         self.toast.show(f"Reacted with {reaction}", "info")
         # Could send to backend
@@ -4406,16 +2722,267 @@ class MainWindow(QMainWindow):
     def update_weather(self, weather_data):
         if hasattr(self, 'weather_lbl'):
             self.weather_lbl.setText(weather_data)
-    
+
+    def on_reminder_due(self, message: str, reminder_id: int):
+        """Fired by ReminderWorker (already marked triggered - or
+        rescheduled a day forward, for a recurring reminder - in the DB by
+        the time this runs) once per reminder that's come due. Beeps,
+        speaks it, shows a toast, and drops it into the chat log so there's
+        a persistent record even if the user misses the beep and the toast.
+
+        🔧 Tier 3 / item 8: `message` is now the already-composed, speakable
+        text from reminders/composer.py (an LLM reword, or
+        reminders/context.py's deterministic template if the LLM was off,
+        unavailable, or too slow) rather than the raw saved string - it
+        already reads as a complete sentence (e.g. "It's due now - call
+        mom."), so the old hardcoded "Reminder: " prefix was dropped here
+        to avoid stacking a second one in front of it. Everything else
+        about this method is unchanged."""
+        if HAS_WINSOUND:
+            try:
+                winsound.Beep(1000, 300)
+            except Exception as e:
+                logger.debug(f"Reminder beep failed (non-fatal): {e}")
+        self.toast.show(f"⏰ {message}", "warning", duration=6000)
+        self.add_chat_bubble(f"⏰ {message}", is_user=False)
+        self.start_speaking(message)
+
+    def on_reminder_upcoming(self, message: str, reminder_id: int, minutes_until: int):
+        """🔧 Tier 3 / item 8: fired by ReminderWorker a few minutes before a
+        reminder is due (config.REMINDER_UPCOMING_WINDOW_MIN), once per
+        occurrence. Deliberately lighter than on_reminder_due - no beep,
+        since this is a heads-up, not the alarm itself - same "ambient,
+        not urgent" treatment _on_proactive_nudge below already uses."""
+        self.toast.show(f"⏳ {message}", "info", duration=5000)
+        self.add_chat_bubble(f"⏳ {message}", is_user=False)
+        self.start_speaking(message)
+
+    # 🔧 Tier 18: on_reminder_followup removed - ReminderWorker no longer
+    # emits reminder_followup at all (see that class's own docstring in
+    # ui/workers.py). The same post-due check-in now arrives through
+    # _on_proactive_nudge below with kind="reminder_followup", styled via
+    # _PROACTIVE_NUDGE_ICONS (🔁, matching this method's old icon exactly).
+
+    def _on_proactive_nudge(self, kind: str, title: str, message: str):
+        """Fired by ProactiveEngine (automation/proactive.py) when it notices
+        something unprompted (battery low, a calendar event starting soon).
+        Same toast + chat bubble + speak treatment as on_reminder_due above,
+        minus the beep - an ambient nudge Wave decided to mention on its own
+        should feel lighter than an alarm the user explicitly set.
+
+        🔧 FIX (Tier 18): this used to be `"🔋" if kind == "battery" else
+        "📅"` - meaning every kind OTHER than battery, including the
+        already-shipped "download" kind, silently fell through to the
+        calendar icon. _PROACTIVE_NUDGE_ICONS (module-level, near ICON_MAP
+        below) now covers every kind ProactiveEngine actually emits, with
+        📅 kept as the fallback for any future kind not yet added there -
+        preserving today's observable behavior for an unmapped kind."""
+        icon = _PROACTIVE_NUDGE_ICONS.get(kind, "📅")
+        self.toast.show(f"{icon} {title}: {message}", "info", duration=6000)
+        self.add_chat_bubble(f"{icon} {message}", is_user=False)
+        self.start_speaking(message)
+
+    def _refresh_health_dot(self):
+        """Tier 19: the sidebar's health_dot_lbl reflects ONLY thread_supervisor's
+        own watched entries (reminder/proactive/consolidation/skill-watcher/
+        DB-writer threads) - not the one-time startup health check or
+        Ollama (both of those are toasts; see _on_health_check_done and
+        _on_ollama_event). Re-derives the whole picture from
+        thread_supervisor.status() fresh on every call rather than tracking
+        state incrementally itself, so it can never drift from the truth -
+        status() is already cheap (an is_alive() per watched entry)."""
+        status = thread_supervisor.status()
+        gave_up = [name for name, info in status.items() if info["gave_up"]]
+        recovered = [name for name, info in status.items() if not info["gave_up"] and info["restart_count"] > 0]
+        if gave_up:
+            color, text = self.theme.danger, f"●  {len(gave_up)} WORKER{'S' if len(gave_up) != 1 else ''} DOWN"
+            tip = "Stopped for good this session (hit the restart cap): " + ", ".join(gave_up)
+            if recovered:
+                tip += "\nRecovered after a restart: " + ", ".join(recovered)
+        elif recovered:
+            color, text = self.theme.warning, "●  RECOVERED FROM A CRASH"
+            tip = "Restarted after crashing, running fine now: " + ", ".join(recovered)
+        else:
+            color, text = self.theme.text_muted, "●  SYSTEMS OK"
+            tip = "All background workers running normally."
+        self.health_dot_lbl.setText(text)
+        self.health_dot_lbl.setStyleSheet(f"color: {color}; font-size: 10.5px; font-weight: 700; background: transparent;")
+        self.health_dot_lbl.setToolTip(tip)
+
+    def _on_ollama_event(self, event: str, message: str):
+        """Tier 19: brain/ollama_lifecycle.py's own listener, hopped to the
+        GUI thread via the ollama_event signal (see its declaration). Just
+        a toast - this is one-shot startup activity, not something
+        continuously monitored like thread_supervisor's watched entries
+        (see _refresh_health_dot), so there's no persistent indicator to
+        keep in sync here."""
+        if event == "problem":
+            self.toast.show(f"⚠️ Ollama: {message}", "warning", duration=6000)
+        elif event in ("server_started", "model_ready"):
+            self.toast.show(f"🦙 {message}", "success")
+        # "already_running" / "model_pulling" are routine, expected states,
+        # not something worth interrupting the user for - still logged by
+        # ollama_lifecycle itself either way.
+
+    def _on_health_check_done(self, results):
+        """Tier 19: the roadmap's "each reported loudly in the UI" - one
+        toast per non-OK result (never for an OK one - a clean bill of
+        health for five checks every single startup would just be noise),
+        so a broken mic or an unreachable LLM provider is something the
+        user actually sees instead of a line in a log file they'd only
+        open after already noticing voice doesn't work."""
+        for r in results:
+            if r.status is Status.PROBLEM:
+                self.toast.show(f"⚠️ {r.name}: {r.message}", "error", duration=8000)
+            elif r.status is Status.WARN:
+                self.toast.show(f"{r.name}: {r.message}", "warning", duration=6000)
+
+    def _run_scheduled_workflow(self, workflow_name: str):
+        """Tier 18: the callback automation/proactive.py's
+        ProactiveEngine.set_workflow_runner() was wired up with above - it
+        calls this from ITS OWN background thread (not the GUI thread), so
+        this must only ever do thread-safe hand-offs, never touch widgets
+        directly. Mirrors ui/workflows_panel.py's _run_workflow/
+        _on_run_finished exactly (same worker_pool.submit of
+        brain._dispatch_tool, same chat-bubble-with-the-result finish) -
+        source="proactive" instead of "ui" is the only real difference, so
+        the audit trail honestly shows this run wasn't button-clicked."""
+        worker = self.worker_pool.submit(
+            self.brain._dispatch_tool, "run_workflow", {"name": workflow_name}, "proactive")
+        worker.signals.result.connect(lambda result: self.add_chat_bubble(str(result), is_user=False))
+        worker.signals.error.connect(
+            lambda e: self.add_chat_bubble(f"Scheduled run of '{workflow_name}' failed: {e}", is_user=False))
+
     def turn_on_mic(self):
         self.mic_active = True
-        self.mic_worker = ContinuousMicWorker()
+        self.mic_worker = ContinuousMicWorker(
+            wake_phrases=getattr(self, "wake_phrases", None)
+        )
         self.mic_worker.text_ready.connect(self.process_voice_input)
-        self.mic_worker.mode_update.connect(self.handle_wake_word_mode)
-        self.mic_worker.interruption_signal.connect(self.stop_speaking)
+        # Tier 11: mode_changed also says whether to announce the change -
+        # False when the wake word came with a command in the same breath
+        # ("Hey Wave, open Chrome"), so Wave doesn't say "Systems active."
+        # on top of its own answer. (mode_update is still emitted for any
+        # other listener; it just doesn't drive this any more.)
+        self.mic_worker.mode_changed.connect(self.handle_wake_word_mode)
+        self.mic_worker.interruption_signal.connect(self._on_barge_in)
+        self.mic_worker.stop_requested.connect(self._on_voice_stop)
+        self.mic_worker.audio_level.connect(self._on_mic_level)
+        self.mic_worker.recognition_failed.connect(self._on_recognition_failed)
+        # Tier 12: live captions while you talk, cleared when listen() returns.
+        self.mic_worker.partial_text.connect(self._on_partial_text)
+        self.mic_worker.utterance_done.connect(self._clear_caption)
         self.mic_worker.start()
-    
-    def handle_wake_word_mode(self, mode):
+
+    # ── Tier 12: live captions ──────────────────────────────────────────
+    # A rough transcript of what you're saying, shown WHILE you say it (local
+    # Whisper + the continuous mic stream only - see voice/stt.py). One faint
+    # bubble, replaced by the real message when you stop; cleared on its own
+    # if nothing follows (an ignored or unrecognised utterance).
+    CAPTION_CLEAR_MS = 4000
+    CAPTION_STYLE = ("color: rgba(150, 160, 180, 0.95); font-style: italic; padding: 6px 12px;"
+                     "border: 1px dashed rgba(140, 150, 170, 0.55); border-radius: 12px;"
+                     "background: transparent;")
+
+    def _on_partial_text(self, text: str):
+        text = (text or "").strip()
+        if not text:
+            return
+        if time.monotonic() - self._caption_closed_at < 0.5:
+            return      # a straggler from the utterance that just ended
+        label = self._caption_label
+        if label is None:
+            row = QWidget()
+            row.setStyleSheet("background: transparent;")
+            lay = QHBoxLayout(row)
+            lay.setContentsMargins(0, 0, 0, 0)
+            label = QLabel()
+            label.setObjectName("liveCaption")
+            label.setWordWrap(True)
+            label.setStyleSheet(self.CAPTION_STYLE)
+            lay.addStretch()
+            lay.addWidget(label)
+            self.chat_layout.addWidget(row)
+            self._caption_row, self._caption_label = row, label
+        try:
+            label.setMaximumWidth(self._bubble_max_width(text))
+        except Exception:
+            pass
+        label.setText("🎙 " + text + " …")
+        self._caption_seq += 1
+        seq = self._caption_seq
+        QTimer.singleShot(self.CAPTION_CLEAR_MS, lambda: self._clear_caption(seq))
+        self._scroll_chat_to_bottom()
+
+    def _clear_caption(self, seq=None):
+        """Removes the live caption. With `seq`, only if no newer caption
+        text arrived since that timer was set."""
+        if seq is not None and seq != self._caption_seq:
+            return
+        if seq is None:
+            self._caption_closed_at = time.monotonic()
+        row = self._caption_row
+        self._caption_row = None
+        self._caption_label = None
+        if row is None:
+            return
+        try:
+            self.chat_layout.removeWidget(row)
+            row.hide()
+            row.deleteLater()
+        except Exception:
+            pass
+
+    def _on_recognition_failed(self):
+        """Heard audio but couldn't recognize it (unclear speech, no
+        internet, or the free speech-recognition service being unreachable) -
+        this used to fail completely silently, leaving no way to tell 'the
+        mic didn't hear anything' apart from 'recognition is broken'."""
+        if hasattr(self, "toast"):
+            self.toast.show("Didn't catch that - try again?", "warning")
+
+    def _on_mic_level(self, level: float):
+        """Tier 11: the real microphone level drives the waveform (it used
+        to be random bars)."""
+        vis = getattr(self, "visualizer", None)
+        if vis is not None and hasattr(vis, "set_level"):
+            vis.set_level(level)
+
+    def _on_barge_in(self):
+        """The mic heard speech addressed to Wave while Wave was talking (see
+        voice/commands.py's barge-in gate): stop talking AND drop the reply
+        in flight. What was said arrives right after as text_ready /
+        stop_requested and is handled there."""
+        self._cancel_reply()
+        self.stop_speaking()
+
+    def _on_voice_stop(self):
+        """Tier 11: "stop" / "ruk jao" / "रुको" / "never mind" - ends the turn
+        in flight (speech, the streaming reply, and any tool it was about to
+        run) and drops a pending yes/no confirmation, so a later "yes" can't
+        fire something the user just called off."""
+        had_reply = self._cancel_reply()
+        was_speaking = bool(getattr(tts_engine, "is_speaking", False))
+        self.stop_speaking()
+        ttfa.tracker.mark("audio_stopped")
+        cancelled_confirmation = False
+        cancel = getattr(getattr(self, "brain", None), "cancel_pending_confirmation", None)
+        if callable(cancel):
+            try:
+                cancelled_confirmation = bool(cancel())
+            except Exception as e:
+                logger.warning(f"Couldn't cancel a pending confirmation: {e}")
+        if ttfa.tracker.active_source() == "stop":
+            ttfa.tracker.finish("ok", stopped_reply=had_reply or None, was_speaking=was_speaking or None)
+        if not hasattr(self, "toast"):
+            return
+        if cancelled_confirmation:
+            self.toast.show("Okay, cancelled - I won't do that.", "info")
+        elif had_reply or was_speaking:
+            self.toast.show("⏹ Stopped", "info")
+
+    def handle_wake_word_mode(self, mode, announce: bool = True):
+        self._avatar_on_mic_mode_changed(mode)
         if mode == "AWAKE":
             style = (
                 f"border-radius: 21px; font-size: 15px; padding: 0px; "
@@ -4430,7 +2997,8 @@ class MainWindow(QMainWindow):
             self.mic_mini_lbl.setStyleSheet(f"color: {self.theme.accent_1}; font-size: 10.5px; font-weight: 700; background: transparent;")
             self.visualizer.set_mode("LISTENING")
             self._set_status("Listening...", self.theme.accent_1)
-            self.start_speaking("Systems active.")
+            if announce:
+                self.start_speaking("Systems active.")
         else:
             style = (
                 f"border-radius: 21px; font-size: 15px; padding: 0px; "
@@ -4442,151 +3010,253 @@ class MainWindow(QMainWindow):
             self.mic_mini_lbl.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 10.5px; font-weight: 700; background: transparent;")
             self.visualizer.set_mode("SLEEPING")
             self._set_status("Online", self.theme.success)
-            self.start_speaking("Standing by.")
-    
-    def stop_speaking(self):
-        if self.tts_thread and self.tts_thread.isRunning():
-            try:
-                tts_engine.stop()
-                self.tts_thread.terminate()
-                self.tts_thread.wait()
-            except Exception:
-                pass
+            if announce:
+                self.start_speaking("Standing by.")
 
+    def _show_idle_voice_state(self):
         if self.mic_worker and self.mic_worker.mode == "AWAKE":
             self.visualizer.set_mode("LISTENING")
             self._set_status("Listening...", self.theme.accent_1)
         else:
             self.visualizer.set_mode("SLEEPING")
             self._set_status("Online", self.theme.success)
-    
+
+    def stop_speaking(self):
+        tts_engine.stop()
+        self._show_idle_voice_state()
+
     def start_speaking(self, text):
         self.stop_speaking()
         self.visualizer.set_mode("SPEAKING")
         self._set_status("Speaking...", self.theme.accent_3)
-        self.tts_thread = TTSWorker(text)
+        self._avatar_on_speech_started()
+        # Tier 19: best-effort - a reminder/proactive nudge speaking outside
+        # any voice/typed turn has no ttfa turn active, and that's fine;
+        # trace.correlate(None) inside TTSWorker.run() is just a no-op then.
+        self.tts_thread = TTSWorker(text, turn_id=ttfa.tracker.active_id())
         self.tts_thread.finished_speaking.connect(self.on_speech_finished)
         self.tts_thread.start()
-    
-    def on_speech_finished(self):
-        if self.mic_worker and self.mic_worker.mode == "AWAKE":
-            self.visualizer.set_mode("LISTENING")
-            self._set_status("Listening...", self.theme.accent_1)
-        else:
-            self.visualizer.set_mode("SLEEPING")
-            self._set_status("Online", self.theme.success)
-    
+
+    def on_speech_finished(self, success: bool = True):
+        # 🔧 FIX: finished_speaking used to fire identically whether
+        # playback actually worked or silently failed end-to-end (no
+        # sounddevice, pygame mixer unable to play anything, offline
+        # fallbacks also unavailable) - see ui/workers.py/voice/tts.py.
+        if not success and hasattr(self, "toast"):
+            self.toast.show("Couldn't play voice reply - check your audio output device", "warning")
+        # Tier 11: a "Hey Wave" -> "Systems active." turn ends here.
+        if ttfa.tracker.active_source() == "wake":
+            ttfa.tracker.finish("ok" if success else "no_audio")
+        self._show_idle_voice_state()
+        self._avatar_on_speech_stopped()
+
     def process_voice_input(self, text):
-        self.stop_speaking()
+        # The mic thread already opened this utterance's time-to-first-audio
+        # turn (it alone has the capture timestamps); send_message() picks
+        # it up instead of opening a "typed" one.
+        self._voice_ttfa_turn = ttfa.tracker.active_id()
         self.chat_input.setPlainText(text)
         self.send_message()
-    
+
     def toggle_mic(self):
         if hasattr(self, 'mic_worker') and self.mic_worker:
             if self.mic_worker.mode == "AWAKE":
                 self.mic_worker.set_mode("SLEEPING")
             else:
                 self.mic_worker.set_mode("AWAKE")
-    
+
     # ==================== AI NLP BRAIN ====================
+    # Shown in a reply bubble until its first text arrives, and appended to
+    # one whose turn was stopped part-way.
+    REPLY_PLACEHOLDER = "…"
+    REPLY_STOPPED_MARK = "⏹ *Stopped*"
+    # Live markdown re-render of a streaming bubble is throttled to this.
+    STREAM_RENDER_MS = 60
+
+    def _set_send_button_stop_mode(self, is_stop: bool):
+        """Tier 19: the send button doubles as Stop while a reply is
+        streaming - flipped on right as a worker starts (_start_reply) and
+        back off the moment there's no reply in flight any more, whether
+        that's because it finished normally (_on_reply_done) or was
+        cancelled (_cancel_reply)."""
+        btn = getattr(self, "btn_send", None)
+        if btn is None:
+            return
+        if is_stop:
+            btn.setToolTip("Stop")
+            Icon.set_btn_icon(btn, "stop", "#000000", 16)
+        else:
+            btn.setToolTip("Send (Enter)")
+            Icon.set_btn_icon(btn, "send", "#000000", 20)
+
+    def _on_send_btn_clicked(self):
+        """Dispatches the one physical button to whichever action its
+        current icon promises - Send when idle, Stop while a reply (and
+        nothing else - see _set_send_button_stop_mode) is in flight."""
+        if getattr(self, "_reply_worker", None) is not None:
+            self._on_stop_button_clicked()
+        else:
+            self.send_message()
+
+    def _on_stop_button_clicked(self):
+        """Clicking Stop has the same effect as the voice "stop" command's
+        cancellation (_on_voice_stop) - minus that command's voice-latency
+        bookkeeping (ttfa's "stop"-source audio_stopped mark), which has no
+        equivalent for a mouse click that never started a voice turn."""
+        had_reply = self._cancel_reply()
+        was_speaking = bool(getattr(tts_engine, "is_speaking", False))
+        self.stop_speaking()
+        if (had_reply or was_speaking) and hasattr(self, "toast"):
+            self.toast.show("⏹ Stopped", "info")
+
     def send_message(self):
         user_text = self.chat_input.toPlainText().strip()
         attachment = self._pending_attachment
+        ttfa_turn, self._voice_ttfa_turn = self._voice_ttfa_turn, None
         if not user_text and not attachment:
             return
+        # A new message supersedes whatever reply is still in flight.
+        self._cancel_reply()
         self.stop_speaking()
 
         self.add_chat_bubble(user_text, is_user=True, attachment=attachment)
         self.chat_input.clear()
         self._clear_attachment()
 
-        if attachment:
-            # A file is attached - skip the local voice/text command shortcuts
-            # below (they're for plain commands) and go straight to the AI.
-            self._set_status("Thinking...", self.theme.warning)
-            worker = AIWorker(self.brain, user_text, attachment=attachment)
-            worker.response_ready.connect(self.display_ai_response)
-            self._track_worker(worker)
-            worker.start()
-            return
+        # Tier 11: the old keyword shortcuts that used to sit here (WhatsApp,
+        # notepad, screenshot, open/close/kill <app>, wifi/bluetooth
+        # toggles) are gone. They called AppController directly, so they
+        # skipped the risk-tier confirm gate - "send hi to mom on whatsapp"
+        # sent at once, "close chrome" closed without asking - and the audit
+        # log and undo. Every message now goes to the brain, whose fast path
+        # (brain/intent_router.py) answers the same commands without an LLM
+        # round-trip, and whose no-provider fallback handles them offline.
+        if ttfa_turn is None:
+            ttfa_turn = ttfa.tracker.begin("typed", heard=user_text)
+        ttfa.tracker.mark("dispatched", turn_id=ttfa_turn)
+        # Tier 19: tags the GUI thread's own log lines for this dispatch -
+        # AIStreamWorker adopts the same ttfa_turn id on its own thread
+        # (see ui/workers.py's AIStreamWorker.run()), so the two threads'
+        # log lines for one turn share an id despite never sharing a stack.
+        with trace.correlate(ttfa_turn):
+            self._start_reply(user_text, attachment=attachment, ttfa_turn=ttfa_turn)
 
-        cmd = user_text.lower()
-
-        # 1. WhatsApp Intent
-        if "whatsapp" in cmd or ("send" in cmd and "message" in cmd):
-            match = re.search(r"(?:send|say|message|type)\s+(.*?)\s+(?:to|for)\s+(.*?)(?:\s+on\s+whatsapp|\s+in\s+whatsapp)?$", cmd)
-            if match:
-                message = match.group(1).strip()
-                contact = match.group(2).strip()
-                contact = re.sub(r"\s+on\s+whatsapp$", "", contact).strip()
-                self._run_action(AppController.send_whatsapp_message, contact, message)
-                return
-
-        # 2. Notepad Write Intent
-        if "write" in cmd and ("notepad" in cmd or "file" in cmd):
-            match = re.search(r"write\s+(.*?)\s+(?:in|on|to)\s+notepad", cmd)
-            if match:
-                text_to_write = match.group(1).strip()
-            else:
-                text_to_write = cmd.replace("write", "").replace("in notepad", "").strip()
-            self._run_action(AppController.write_in_notepad, text_to_write)
-            return
-
-        # 3. Screenshot Intent
-        if "screenshot" in cmd or "capture" in cmd:
-            if "delete" in cmd or "remove" in cmd:
-                self._run_action(AppController.delete_latest_screenshot)
-            else:
-                self._run_action(AppController.take_screenshot)
-            return
-
-        # 4. Open Applications
-        if cmd.startswith("open ") or cmd.startswith("launch ") or cmd.startswith("start "):
-            app_name = re.sub(r"^(open|launch|start)\s+", "", cmd).strip()
-            if " and " in app_name:
-                app_name = app_name.split(" and ")[0].strip()
-            if "setting" in app_name:
-                self._run_action(AppController.open_system_setting, app_name)
-            else:
-                self._run_action(AppController.open_app, app_name)
-            return
-            
-        if cmd.startswith("close ") or cmd.startswith("exit ") or cmd.startswith("kill "):
-            app_name = re.sub(r"^(close|exit|kill)\s+", "", cmd).strip()
-            if "window" in app_name or "current" in app_name:
-                self._run_action(AppController.close_current_window)
-            elif "tab" in app_name:
-                self._run_action(AppController.close_current_tab)
-            else:
-                self._run_action(AppController.close_app, app_name)
-            return
-
-        # 5. Hardware Toggles
-        if "turn on" in cmd or "turn off" in cmd or "enable" in cmd or "disable" in cmd:
-            if "wifi" in cmd or "bluetooth" in cmd or "hotspot" in cmd:
-                self._run_action(AppController.toggle_hardware, cmd)
-                return
-
-        # Fallback: Groq AI
+    def _start_reply(self, user_text, attachment=None, ttfa_turn=None):
+        """Streams the brain's answer into a new bubble and speaks it as it
+        arrives (voice/tts.py's pipeline) - AIStreamWorker does the work."""
         self._set_status("Thinking...", self.theme.warning)
-        worker = AIWorker(self.brain, user_text)
-        worker.response_ready.connect(self.display_ai_response)
+        self._avatar_on_reply_started()
+        bubble = self.add_chat_bubble(self.REPLY_PLACEHOLDER, is_user=False)
+        worker = AIStreamWorker(self.brain, user_text, attachment=attachment,
+                                speak_reply=True, ttfa_turn=ttfa_turn)
+        worker.view = _ReplyView(bubble)
+        worker.text_chunk.connect(partial(self._on_reply_chunk, worker))
+        worker.started_speaking.connect(self._avatar_on_speech_started)
+        worker.response_ready.connect(partial(self._on_reply_done, worker))
+        worker.finished_speaking.connect(partial(self._on_reply_speech_finished, worker))
+        self._reply_worker = worker
+        self._set_send_button_stop_mode(True)
         self._track_worker(worker)
         worker.start()
+        return worker
+
+    def _cancel_reply(self) -> bool:
+        """Cancels the streaming reply in flight, if any (its bubble keeps
+        what was shown, marked as stopped). Returns whether there was one."""
+        worker, self._reply_worker = getattr(self, "_reply_worker", None), None
+        if worker is None:
+            return False
+        self._set_send_button_stop_mode(False)
+        try:
+            worker.cancel()
+        except Exception as e:
+            logger.warning(f"Couldn't cancel the reply in flight: {e}")
+        return True
+
+    def _on_reply_chunk(self, worker, piece: str):
+        view = getattr(worker, "view", None)
+        if view is None or view.done or not piece:
+            return
+        first = not view.text
+        view.text += piece
+        if first and worker is self._reply_worker:
+            if worker.speak_reply:
+                self.visualizer.set_mode("SPEAKING")
+                self._set_status("Speaking...", self.theme.accent_3)
+            else:
+                self._set_status("Replying...", self.theme.accent_3)
+        if not view.render_pending:
+            view.render_pending = True
+            QTimer.singleShot(self.STREAM_RENDER_MS, partial(self._render_reply, worker))
+
+    def _render_reply(self, worker):
+        view = worker.view
+        view.render_pending = False
+        if not view.done:
+            self._apply_reply_text(view, view.text or self.REPLY_PLACEHOLDER)
+
+    def _apply_reply_text(self, view, text: str):
+        # Follow the reply down only if the user hadn't scrolled up to read
+        # something else.
+        follow = True
+        bar = getattr(getattr(self, "chat_scroll", None), "verticalScrollBar", None)
+        if callable(bar):
+            try:
+                sb = bar()
+                follow = sb.value() >= sb.maximum() - 48
+            except Exception:
+                follow = True
+        try:
+            view.bubble.set_text(text, max_width=self._bubble_max_width(text))
+        except RuntimeError:
+            return   # the bubble was deleted (chat cleared) while the reply streamed
+        if follow:
+            self._scroll_chat_to_bottom(delay_ms=30)
+
+    def _on_reply_done(self, worker, full_text: str):
+        view = getattr(worker, "view", None)
+        if view is None:
+            return
+        view.done = True
+        text = full_text or view.text
+        if worker.cancelled:
+            text = (text.rstrip() + "\n\n" if text.strip() else "") + self.REPLY_STOPPED_MARK
+        elif not text.strip():
+            text = "(no reply)"
+        view.text = text
+        self._apply_reply_text(view, text)
+        if worker is self._reply_worker:
+            self._reply_worker = None
+            self._set_send_button_stop_mode(False)
+            if not worker.speak_reply:
+                self._show_idle_voice_state()
+        # Tier 25: a no-op unless this turn's state is still THINKING - the
+        # normal speak_reply=True path already settled it via
+        # _avatar_on_speech_stopped() below, well before response_ready
+        # fires (see ui/workers.py's AIStreamWorker._run_inner() for the
+        # exact emission order). This only matters for speak_reply=False.
+        self._avatar_on_reply_done_without_speech()
+
+    def _on_reply_speech_finished(self, worker, success: bool):
+        if worker.ttfa_turn is not None:
+            ttfa.tracker.finish("interrupted" if worker.cancelled else ("ok" if success else "no_audio"),
+                                turn_id=worker.ttfa_turn)
+        if worker is self._reply_worker or self._reply_worker is None:
+            if not success and hasattr(self, "toast"):
+                self.toast.show("Couldn't play voice reply - check your audio output device", "warning")
+            self._show_idle_voice_state()
+        self._avatar_on_speech_stopped()
 
     def _plain_text_for_speech(self, text: str) -> str:
-        """Strips markdown syntax before handing text to TTS, so it doesn't
-        read asterisks, backticks, pipes, and hash symbols out loud."""
-        t = re.sub(r'```.*?```', ' Code block omitted. ', text, flags=re.DOTALL)
-        t = re.sub(r'`([^`]+)`', r'\1', t)
-        t = re.sub(r'\*\*([^*]+)\*\*', r'\1', t)
-        t = re.sub(r'\*([^*]+)\*', r'\1', t)
-        t = re.sub(r'^\s{0,3}#{1,6}\s*', '', t, flags=re.MULTILINE)
-        t = re.sub(r'^\s*\|?[\s:|-]+\|?\s*$', '', t, flags=re.MULTILINE)
-        t = t.replace('|', ', ')
-        return t
-    
+        """What of a finished reply gets read aloud - no code blocks, no table
+        pipes (Tier 11: one rule set, shared with streamed replies - see
+        voice/speech_filter.py; emphasis/heading markers are stripped by
+        voice/tts.py's clean_for_speech)."""
+        return speech_filter.for_speech(text)
+
     def display_ai_response(self, response: str):
+        """For results that arrive as one finished string (the direct
+        actions behind dashboard buttons, OCR) rather than a streamed turn."""
         self.add_chat_bubble(response, is_user=False)
         self.start_speaking(self._plain_text_for_speech(response))
     
@@ -4603,11 +3273,15 @@ class MainWindow(QMainWindow):
         self._update_clock()
     
     def _update_clock(self):
+        if self.isMinimized() or not self.isVisible():
+            return      # Wave lives minimised in the tray; nobody is looking at the clock
         if hasattr(self, "time_lbl"):
             self.time_lbl.setText(time.strftime("%I:%M:%S %p"))
             self.date_lbl.setText(time.strftime("%d %b %Y").upper())
     
     def update_sys_stats(self):
+        if self.isMinimized() or not self.isVisible():
+            return      # skip all the psutil work + repaints while nobody can see the gauges
         stats = SystemMonitor.get_stats()
         if stats:
             cpu = stats.get('cpu_percent', 0) or 0
@@ -4671,9 +3345,12 @@ class MainWindow(QMainWindow):
             pass
 
         current_net_io = psutil.net_io_counters()
-        dl_speed = (current_net_io.bytes_recv - self.last_net_io.bytes_recv) / 1024 / 1024
-        ul_speed = (current_net_io.bytes_sent - self.last_net_io.bytes_sent) / 1024 / 1024
+        now = time.monotonic()
+        elapsed = max(0.25, now - getattr(self, "_last_net_ts", now - 1.0))   # real seconds since the last reading
+        dl_speed = (current_net_io.bytes_recv - self.last_net_io.bytes_recv) / 1024 / 1024 / elapsed
+        ul_speed = (current_net_io.bytes_sent - self.last_net_io.bytes_sent) / 1024 / 1024 / elapsed
         self.last_net_io = current_net_io
+        self._last_net_ts = now
 
         for attr, txt in (("dl_lbl", f"⬇ DL: {dl_speed:.2f} MB/s"), ("ul_lbl", f"⬆ UL: {ul_speed:.2f} MB/s"),
                            ("dl_lbl_big", f"⬇ DL: {dl_speed:.2f} MB/s"), ("ul_lbl_big", f"⬆ UL: {ul_speed:.2f} MB/s")):
@@ -4688,189 +3365,86 @@ class MainWindow(QMainWindow):
             self.net_ul_spark.add_value(min(100, ul_speed * 10))
 
     def closeEvent(self, event):
+        # Tier 19: tells _on_reminder_worker_finished this shutdown is
+        # deliberate, so it doesn't try to recreate the worker this
+        # closeEvent is about to stop. Set before anything is actually
+        # stopped below.
+        self._shutting_down = True
+        # Stop the thread supervisor itself next - otherwise it could
+        # "helpfully" restart one of the singletons below in the middle of
+        # this deliberate shutdown, racing the very stop() calls that
+        # follow (see automation/thread_supervisor.py's own docstring).
+        thread_supervisor.stop()
+        try:
+            get_loader().stop()
+        except Exception:
+            pass
         # Cleanup workers
+        self._cancel_reply()
+        try:
+            tts_engine.stop()
+        except Exception:
+            pass
         self.worker_pool.shutdown()
         if self.mic_worker:
             self.mic_worker.stop()
+        try:
+            stt_engine.close()       # Tier 12: release the microphone stream now
+        except Exception:
+            pass
         if self.weather_worker:
             self.weather_worker.quit()
         if self.clip_worker:
             self.clip_worker.stop()
         if self.media_info_worker:
             self.media_info_worker.stop()
+        if self.reminder_worker:
+            self.reminder_worker.stop()
+        proactive_engine.stop()
+        memory_consolidator.stop()
+        # Tier 19: give the action log's background writer a bounded
+        # chance to flush whatever accumulated during this whole shutdown
+        # sequence before the process actually exits - see Audit.shutdown's
+        # own docstring for why this is best-effort, not a guarantee.
+        audit_mod.audit.shutdown()
+        # Tier 19: only actually stops anything if THIS session started
+        # `ollama serve` itself (see brain/ollama_lifecycle.py's shutdown()
+        # docstring) - a no-op, same as the checks above, when there's
+        # nothing of this app's own left to clean up.
+        ollama_lifecycle.shutdown()
         if HAS_KEYBOARD:
             keyboard.unhook_all()
+        # Tier 23: stop the dashboard's uvicorn thread if it was ever
+        # started - a no-op (self.remote_dashboard is still None) on the
+        # overwhelmingly common case where the feature was never touched.
+        if self.remote_dashboard is not None:
+            try:
+                self.remote_dashboard.stop()
+            except Exception:
+                pass
         super().closeEvent(event)
 
 
 # =============================================================================
-# 📦 WORKER CLASSES (unchanged but using WorkerPool pattern)
+# 📦 WORKER CLASSES moved to ui/workers.py (WeatherWorker, TTSWorker,
+# ContinuousMicWorker, AIWorker, ClipboardWorker, ActionWorker, OCRWorker,
+# MediaInfoWorker, MediaSeekWorker) - imported at the top of this file.
+# Behavior is unchanged, only the location moved.
+# ReminderWorker (Phase 2) was added directly to ui/workers.py, alongside them.
 # =============================================================================
-class WeatherWorker(QThread):
-    weather_ready = pyqtSignal(str)
 
-    def run(self):
-        try:
-            res = requests.get("https://wttr.in/?format=%C+%t", timeout=5)
-            if res.status_code == 200:
-                self.weather_ready.emit(res.text.strip())
-            else:
-                self.weather_ready.emit("Data Unavailable")
-        except Exception:
-            self.weather_ready.emit("Offline")
-
-
-class TTSWorker(QThread):
-    finished_speaking = pyqtSignal()
-
-    def __init__(self, text):
-        super().__init__()
-        self.text = text
-
-    def run(self):
-        try:
-            tts_engine.speak(self.text)
-        except Exception as e:
-            logger.error(f"TTS Error: {e}")
-        finally:
-            self.finished_speaking.emit()
-
-
-class ContinuousMicWorker(QThread):
-    text_ready = pyqtSignal(str)
-    mode_update = pyqtSignal(str)
-    interruption_signal = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
-        self.is_running = True
-        self.mode = "SLEEPING"
-
-    def run(self):
-        self.mode_update.emit(self.mode)
-        while self.is_running:
-            text = stt_engine.listen()
-            if not self.is_running:
-                break
-            if text:
-                text_lower = text.lower()
-                self.interruption_signal.emit()
-
-                if self.mode == "SLEEPING":
-                    if any(w in text_lower for w in ["hello wave", "wake up", "hey wave"]):
-                        self.set_mode("AWAKE")
-                elif self.mode == "AWAKE":
-                    if any(w in text_lower for w in ["mute", "sleep", "standby"]):
-                        self.set_mode("SLEEPING")
-                    else:
-                        self.text_ready.emit(text)
-
-    def set_mode(self, new_mode):
-        self.mode = new_mode
-        self.mode_update.emit(self.mode)
-
-    def stop(self):
-        self.is_running = False
-
-
-class AIWorker(QThread):
-    response_ready = pyqtSignal(str)
-
-    def __init__(self, brain, text, attachment=None):
-        super().__init__()
-        self.brain = brain
-        self.text = text
-        self.attachment = attachment
-
-    def run(self):
-        reply = self.brain.think(self.text, attachment=self.attachment)
-        self.response_ready.emit(reply)
-
-
-class ClipboardWorker(QThread):
-    clip_changed = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.is_running = True
-
-    def run(self):
-        last_value = None
-        while self.is_running:
-            try:
-                current = pyperclip.paste()
-                if current and current != last_value:
-                    last_value = current
-                    self.clip_changed.emit(current)
-            except Exception:
-                pass
-            time.sleep(1)
-
-    def stop(self):
-        self.is_running = False
-
-
-class ActionWorker(QThread):
-    result_ready = pyqtSignal(str)
-
-    def __init__(self, func, *args):
-        super().__init__()
-        self.func = func
-        self.args = args
-
-    def run(self):
-        try:
-            result = self.func(*self.args)
-            self.result_ready.emit(result if isinstance(result, str) and result else "Done.")
-        except Exception as e:
-            logger.error(f"ActionWorker error: {e}")
-            self.result_ready.emit(f"Something went wrong: {e}")
-
-
-class OCRWorker(QThread):
-    result_ready = pyqtSignal(str)
-
-    def run(self):
-        try:
-            path = VisionCapture.take_screenshot()
-            if not path:
-                self.result_ready.emit("Failed to capture the screen.")
-                return
-            text = ocr.extract_text(path)
-            self.result_ready.emit(text)
-        except Exception as e:
-            logger.error(f"OCRWorker error: {e}")
-            self.result_ready.emit(f"Error reading screen text: {e}")
-
-
-class MediaInfoWorker(QThread):
-    info_ready = pyqtSignal(dict)
-
-    def __init__(self):
-        super().__init__()
-        self.is_running = True
-
-    def run(self):
-        while self.is_running:
-            info = get_now_playing() or {}
-            self.info_ready.emit(info)
-            self.msleep(1000)
-
-    def stop(self):
-        self.is_running = False
-
-
-class MediaSeekWorker(QThread):
-    def __init__(self, position_seconds: float):
-        super().__init__()
-        self.position_seconds = position_seconds
-
-    def run(self):
-        seek_to(self.position_seconds)
-
+# Tier 18: icon per ProactiveEngine nudge `kind` - see _on_proactive_nudge's
+# own 🔧 FIX comment above for why this exists. Covers every kind
+# automation/proactive.py's ProactiveNudge.kind can actually be (see that
+# module's own _PROACTIVE_KINDS tuple).
+_PROACTIVE_NUDGE_ICONS = {
+    "battery": "🔋", "calendar": "📅", "download": "📥", "workflow": "▶️",
+    "reminder_followup": "🔁", "morning_briefing": "☀️", "idle_break": "🧘",
+    "streak": "🔥", "habit": "💡", "low_disk": "💾",
+}
 
 # Icon name mapping for DashboardTile
 ICON_MAP = {
     "house": "🏠", "message": "💬", "chart-line": "📊", "bolt": "⚡",
-    "music": "🎵", "folder": "📁", "eye": "👁", "clipboard": "📋", "gear": "⚙",
+    "music": "🎵", "folder": "📁", "eye": "👁", "clipboard": "📋", "clock-rotate-left": "🕘", "gear": "⚙",
 }

@@ -1,0 +1,362 @@
+{
+  "name": "hey_wave",
+  "phrase": "hey wave",
+  "format": "openWakeWord classifier (input 16x96 speech_embedding frames, output 1 score)",
+  "recommended_threshold": 0.35,
+  "smoothing_frames": 1,
+  "mode": "prefilter",
+  "confirm_below": 1.0,
+  "operating_point": {
+    "threshold": 0.35,
+    "false_accepts_per_hour": 52.0,
+    "false_reject_rate_noisy": 0.0822,
+    "false_reject_rate_clean": 0.0489,
+    "sound_alike_accept_rate": 0.2577
+  },
+  "sha256": "3d02359a23c2b26fdd408940df99c1dc9784d1ef6cec16ff7b3d93e66f165afc",
+  "trained_at": "2026-11-04T14:17:26+00:00",
+  "training_seconds": 2658,
+  "license": "MIT (same as Wave). Training speech was synthesized with Piper's LibriTTS voice (dataset CC BY 4.0, https://www.openslr.org/60/) and espeak-ng; negative text from public-domain Project Gutenberg books. No openWakeWord pretrained (CC BY-NC-SA) model or data is part of it.",
+  "data": {
+    "positive_phrases": [
+      "hey wave",
+      "hey wave.",
+      "hey, wave.",
+      "hey wave!",
+      "hey wave?",
+      "hey Wave,",
+      "hay wave.",
+      "hey weyv.",
+      "hey vave.",
+      "हे वेव",
+      "हे वेव।",
+      "हे, वेव"
+    ],
+    "sound_alike_negatives": [
+      "hey",
+      "hey.",
+      "wave.",
+      "waves.",
+      "hey there.",
+      "hey you.",
+      "hey dave.",
+      "hey babe.",
+      "hey wade.",
+      "hey way.",
+      "hey wait.",
+      "hey save.",
+      "hey gabe.",
+      "hey jane.",
+      "hey wayne.",
+      "hey weigh.",
+      "hey whale.",
+      "hey wake.",
+      "hey wait a second.",
+      "hey we've.",
+      "hey weave.",
+      "hey Eva.",
+      "hey Maeve.",
+      "a wave.",
+      "the wave.",
+      "they wave.",
+      "they waved.",
+      "heat wave.",
+      "new wave.",
+      "microwave.",
+      "brain wave.",
+      "wave goodbye.",
+      "make a wave.",
+      "hey siri.",
+      "hey google.",
+      "okay google.",
+      "hey jarvis.",
+      "alexa.",
+      "hey hey.",
+      "hey man.",
+      "hey bro.",
+      "hey yaar.",
+      "hey baby.",
+      "hey what.",
+      "hey wow.",
+      "heavy.",
+      "away.",
+      "always.",
+      "hey mate.",
+      "say wave.",
+      "hey grave.",
+      "hey brave.",
+      "hey cave.",
+      "hey Wales.",
+      "hey Wednesday.",
+      "hey ways.",
+      "हे भगवान",
+      "हे राम",
+      "वेव",
+      "हे",
+      "हेलो",
+      "हाय",
+      "वाह",
+      "अरे वाह"
+    ],
+    "scale": 1.0,
+    "seed": 1234
+  },
+  "metrics_synthetic": {
+    "stream_hours": 1.0,
+    "stream": "held-out voices reading held-out books, with noise and music; no wake word and no sound-alike phrases",
+    "positives_noisy": 450,
+    "positives_clean": 450,
+    "sound_alike_clips": 260,
+    "by_smoothing": {
+      "1": [
+        {
+          "threshold": 0.2,
+          "false_accepts_per_hour": 118.0,
+          "false_reject_rate_noisy": 0.0578,
+          "false_reject_rate_clean": 0.0378,
+          "sound_alike_accept_rate": 0.3538
+        },
+        {
+          "threshold": 0.25,
+          "false_accepts_per_hour": 94.0,
+          "false_reject_rate_noisy": 0.06,
+          "false_reject_rate_clean": 0.0378,
+          "sound_alike_accept_rate": 0.3231
+        },
+        {
+          "threshold": 0.3,
+          "false_accepts_per_hour": 74.0,
+          "false_reject_rate_noisy": 0.0711,
+          "false_reject_rate_clean": 0.0422,
+          "sound_alike_accept_rate": 0.2846
+        },
+        {
+          "threshold": 0.35,
+          "false_accepts_per_hour": 52.0,
+          "false_reject_rate_noisy": 0.0822,
+          "false_reject_rate_clean": 0.0489,
+          "sound_alike_accept_rate": 0.2577
+        },
+        {
+          "threshold": 0.4,
+          "false_accepts_per_hour": 39.0,
+          "false_reject_rate_noisy": 0.1,
+          "false_reject_rate_clean": 0.0511,
+          "sound_alike_accept_rate": 0.2192
+        },
+        {
+          "threshold": 0.45,
+          "false_accepts_per_hour": 30.0,
+          "false_reject_rate_noisy": 0.12,
+          "false_reject_rate_clean": 0.0556,
+          "sound_alike_accept_rate": 0.2038
+        },
+        {
+          "threshold": 0.5,
+          "false_accepts_per_hour": 18.0,
+          "false_reject_rate_noisy": 0.1422,
+          "false_reject_rate_clean": 0.0689,
+          "sound_alike_accept_rate": 0.1692
+        },
+        {
+          "threshold": 0.55,
+          "false_accepts_per_hour": 14.0,
+          "false_reject_rate_noisy": 0.1778,
+          "false_reject_rate_clean": 0.0844,
+          "sound_alike_accept_rate": 0.1462
+        },
+        {
+          "threshold": 0.6,
+          "false_accepts_per_hour": 5.0,
+          "false_reject_rate_noisy": 0.2133,
+          "false_reject_rate_clean": 0.1111,
+          "sound_alike_accept_rate": 0.1346
+        },
+        {
+          "threshold": 0.65,
+          "false_accepts_per_hour": 3.0,
+          "false_reject_rate_noisy": 0.2444,
+          "false_reject_rate_clean": 0.14,
+          "sound_alike_accept_rate": 0.1154
+        },
+        {
+          "threshold": 0.7,
+          "false_accepts_per_hour": 3.0,
+          "false_reject_rate_noisy": 0.32,
+          "false_reject_rate_clean": 0.1867,
+          "sound_alike_accept_rate": 0.1038
+        },
+        {
+          "threshold": 0.75,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.3867,
+          "false_reject_rate_clean": 0.2333,
+          "sound_alike_accept_rate": 0.0846
+        },
+        {
+          "threshold": 0.8,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.4711,
+          "false_reject_rate_clean": 0.3044,
+          "sound_alike_accept_rate": 0.0654
+        },
+        {
+          "threshold": 0.85,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.5822,
+          "false_reject_rate_clean": 0.4356,
+          "sound_alike_accept_rate": 0.0423
+        },
+        {
+          "threshold": 0.9,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.6978,
+          "false_reject_rate_clean": 0.58,
+          "sound_alike_accept_rate": 0.0154
+        },
+        {
+          "threshold": 0.95,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.8444,
+          "false_reject_rate_clean": 0.7667,
+          "sound_alike_accept_rate": 0.0077
+        }
+      ],
+      "2": [
+        {
+          "threshold": 0.2,
+          "false_accepts_per_hour": 55.0,
+          "false_reject_rate_noisy": 0.0711,
+          "false_reject_rate_clean": 0.0489,
+          "sound_alike_accept_rate": 0.2769
+        },
+        {
+          "threshold": 0.25,
+          "false_accepts_per_hour": 30.0,
+          "false_reject_rate_noisy": 0.0889,
+          "false_reject_rate_clean": 0.0533,
+          "sound_alike_accept_rate": 0.2231
+        },
+        {
+          "threshold": 0.3,
+          "false_accepts_per_hour": 21.0,
+          "false_reject_rate_noisy": 0.1044,
+          "false_reject_rate_clean": 0.0622,
+          "sound_alike_accept_rate": 0.1885
+        },
+        {
+          "threshold": 0.35,
+          "false_accepts_per_hour": 14.0,
+          "false_reject_rate_noisy": 0.1133,
+          "false_reject_rate_clean": 0.0711,
+          "sound_alike_accept_rate": 0.1692
+        },
+        {
+          "threshold": 0.4,
+          "false_accepts_per_hour": 12.0,
+          "false_reject_rate_noisy": 0.1378,
+          "false_reject_rate_clean": 0.0867,
+          "sound_alike_accept_rate": 0.1538
+        },
+        {
+          "threshold": 0.45,
+          "false_accepts_per_hour": 5.0,
+          "false_reject_rate_noisy": 0.1778,
+          "false_reject_rate_clean": 0.1044,
+          "sound_alike_accept_rate": 0.1385
+        },
+        {
+          "threshold": 0.5,
+          "false_accepts_per_hour": 4.0,
+          "false_reject_rate_noisy": 0.2356,
+          "false_reject_rate_clean": 0.1178,
+          "sound_alike_accept_rate": 0.1038
+        },
+        {
+          "threshold": 0.55,
+          "false_accepts_per_hour": 3.0,
+          "false_reject_rate_noisy": 0.2956,
+          "false_reject_rate_clean": 0.1511,
+          "sound_alike_accept_rate": 0.1
+        },
+        {
+          "threshold": 0.6,
+          "false_accepts_per_hour": 2.0,
+          "false_reject_rate_noisy": 0.3556,
+          "false_reject_rate_clean": 0.1889,
+          "sound_alike_accept_rate": 0.0654
+        },
+        {
+          "threshold": 0.65,
+          "false_accepts_per_hour": 2.0,
+          "false_reject_rate_noisy": 0.4067,
+          "false_reject_rate_clean": 0.2533,
+          "sound_alike_accept_rate": 0.0462
+        },
+        {
+          "threshold": 0.7,
+          "false_accepts_per_hour": 1.0,
+          "false_reject_rate_noisy": 0.4844,
+          "false_reject_rate_clean": 0.3111,
+          "sound_alike_accept_rate": 0.0308
+        },
+        {
+          "threshold": 0.75,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.5578,
+          "false_reject_rate_clean": 0.3822,
+          "sound_alike_accept_rate": 0.0308
+        },
+        {
+          "threshold": 0.8,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.6333,
+          "false_reject_rate_clean": 0.5067,
+          "sound_alike_accept_rate": 0.0269
+        },
+        {
+          "threshold": 0.85,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.7289,
+          "false_reject_rate_clean": 0.6444,
+          "sound_alike_accept_rate": 0.0115
+        },
+        {
+          "threshold": 0.9,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.8311,
+          "false_reject_rate_clean": 0.7644,
+          "sound_alike_accept_rate": 0.0038
+        },
+        {
+          "threshold": 0.95,
+          "false_accepts_per_hour": 0.0,
+          "false_reject_rate_noisy": 0.9378,
+          "false_reject_rate_clean": 0.9,
+          "sound_alike_accept_rate": 0.0038
+        }
+      ]
+    }
+  },
+  "caveat": "All metrics are on synthetic, held-out voices. Measure on your own PC - see docs/WAKE_WORD.md.",
+  "hyperparameters": {
+    "hidden": [
+      128,
+      64
+    ],
+    "epochs": 30,
+    "batch": 512,
+    "lr": 0.001,
+    "l2": 0.0001,
+    "dropout": 0.3,
+    "neg_weight": 3.0,
+    "adv_weight": 2.0,
+    "hard_weight": 3.0,
+    "mining_rounds": 2,
+    "pos_copies": 3,
+    "more_speech": 1000,
+    "splice": 6000,
+    "splice_weight": 1.5,
+    "train_stream_minutes": 90.0
+  }
+}

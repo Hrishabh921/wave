@@ -1,0 +1,14 @@
+{
+  "_comment": "Limits checked by `python -m bench.run_bench --compare` against bench/baseline.json. A run that exceeds any of these exits non-zero, for CI to gate on.",
+  "max_accuracy_drop": 0.02,
+  "max_macro_f1_drop": 0.03,
+  "max_false_trigger_rate_increase": 0.02,
+  "max_false_trigger_rate_absolute": 0.05,
+  "max_composite_drop": 0.02,
+  "p95_latency_budget_ms": 2.0,
+  "max_p95_latency_increase_ms": 1.0,
+  "redteam": {
+    "min_recall": 0.85,
+    "max_false_positive_rate": 0.1
+  }
+}

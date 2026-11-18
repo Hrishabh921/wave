@@ -4,13 +4,14 @@
 
 # ── Core (the app will not start without these) ──────────────────────
 PyQt6==6.11.0
-groq==1.4.0
+groq==1.4.0                      # optional since Phase 4: only needed while LLM_PROVIDER=groq (else the generic client is used)
 SpeechRecognition==3.10.1
 PyAudio==0.2.14
 pygame==2.6.1
-edge-tts==7.2.8
+edge-tts==7.3.1                 # 7.2.8 is now refused by the voice service (HTTP 403)
 pywhatkit==5.4
 requests==2.34.2
+urllib3==2.6.3                  # shared Retry/HTTPAdapter session in web/web_ops.py (Tier 3 / item 7)
 psutil==5.9.8
 pyautogui==0.9.54
 opencv-python==4.11.0.86
@@ -31,4 +32,28 @@ keyboard==0.13.5               # global hotkeys
 qtawesome==1.4.2               # icon set used across the UI
 Pygments==2.21.0               # code syntax highlighting in chat bubbles
 screen-brightness-control==0.27.2   # brightness slider
-duckduckgo-search==8.1.1       # get_live_information / ask_internet tool
+duckduckgo-search==8.1.1       # get_live_information/ask_internet, and get_news (Tier 3 / item 7)
+ollama==0.6.3                   # local-LLM fallback when Groq is down (Phase 2)
+dateparser==1.4.3               # natural-language time parsing for reminders/alarms (Phase 2)
+faster-whisper==1.2.1           # local/offline speech recognition (else falls back to Google, Phase 3)
+numpy<2.0.0              # audio-array conversion for faster-whisper (also needed by faster-whisper itself)
+sentence-transformers==6.1.0    # semantic memory recall (else falls back to plain key/value memory, Phase 3)
+sounddevice==0.5.6               # real-time TTS playback that can feed AEC's far-end reference (else pygame only, Phase 5)
+aec-audio-processing==1.0.1      # real echo cancellation via WebRTC APM (else energy-threshold heuristics only, Phase 5)
+yt-dlp==2026.10.26               # reliable YouTube search for play_on_youtube (else falls back to pywhatkit's HTML-scraping, Tier 16)
+beautifulsoup4==4.15.0           # HTML-to-text extraction for summarize_page (else falls back to a small stdlib html.parser extractor, Tier 16)
+google-auth==2.62.1              # Google Calendar sync: OAuth credentials/token refresh (Tier 18)
+google-auth-oauthlib==1.5.0       # Google Calendar sync: the one-time browser consent flow (Tier 18)
+google-api-python-client==2.201.0 # Google Calendar sync: the actual Calendar API v3 call (Tier 18)
+fastapi==0.162.2                 # remote dashboard (Tier 23): the web server behind "control Wave from your phone"
+uvicorn[standard]==0.54.0         # remote dashboard: runs the FastAPI app above
+qrcode[pil]==8.2                 # remote dashboard: renders the pairing QR code (else falls back to a plain code/URL to type by hand)
+pywebview==6.2.1                  # Tier 24: the new HTML/CSS/JS UI's native window host (wave_web_start.pyw) - wave_start.pyw's PyQt6 UI is unaffected and still works without this
+httpx==0.28.1                    # remote dashboard's OWN test suite only (fastapi.testclient.TestClient) - not imported by the running app itself
+# NOT listed here: piper-tts (local neural voice, replaces robotic SAPI as the offline TTS
+# fallback). Install it yourself if you want it - see voice/tts.py's HAS_PIPER block for why
+# it's a deliberate opt-in rather than a default (unverified Windows wheel coverage, GPL-3.0
+# license, pulls in onnxruntime).
+# NOT listed here either: no ICS-parsing library - automation/calendar_sync.py parses RFC 5545
+# by hand instead (see that module's own top docstring for why), so ICS feed sync needs nothing
+# beyond what's already in "Core" above.

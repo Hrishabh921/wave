@@ -1,0 +1,81 @@
+/* tokens.css - non-colour design tokens + the icon font.
+ *
+ * Colours are NOT defined here: they're theme values, set at runtime on
+ * :root by js/theme.js from the same table ui/theme.py uses (so all 11
+ * desktop themes + custom themes work here too). The fallbacks below are
+ * the default "Black Glass" theme so the page never flashes unstyled.
+ *
+ * Sizes mirror ui/theme.py's Tier 21 tokens and the literal pixel values in
+ * ThemeManager.build_stylesheet() - 1 CSS px == 1 Qt logical px.
+ */
+
+/* Font Awesome 6 Free (Solid) - the exact font file qtawesome draws the
+ * desktop UI's "fa6s.*" icons with (copied from the qtawesome package).
+ * Font Awesome Free fonts are licensed under the SIL OFL 1.1. */
+@font-face {
+    font-family: "FA6 Solid";
+    src: url("../fonts/fa6-solid-900.ttf") format("truetype");
+    font-weight: 900;
+    font-style: normal;
+    font-display: block;
+}
+
+:root {
+    --bg-main: #000000;
+    --bg-panel: rgba(20,20,20,0.95);
+    --bg-surface: rgba(30,30,30,0.98);
+    --bg-surface2: #1A1A1A;
+    --border: rgba(255,255,255,0.15);
+    --border-soft: rgba(255,255,255,0.08);
+    --text-main: #FFFFFF;
+    --text-muted: #B0B0B0;
+    --text-faint: #808080;
+    --accent-1: #00D4AA;
+    --accent-2: #FF6B9D;
+    --accent-3: #FFD60A;
+    --success: #00E676;
+    --warning: #FFD60A;
+    --danger: #FF3D5A;
+    --bubble-sent: #00D4AA;
+    --bubble-recv: #1A1A1A;
+    --surface-hover: rgba(40,40,40,1);
+    --surface-pressed: rgba(10,10,10,1);
+    --surface-header: rgba(30,30,30,1);
+    --dialog-bg: #0A0A0A;
+    --page-bg: rgba(20,20,20,0.95);
+    --panel-top: rgba(30,30,30,0.98);
+    --panel-bottom: rgba(20,20,20,0.92);
+    --nav-checked-c0: rgba(212,170,64,0);
+    --nav-checked-c1: rgba(107,157,32,1);
+    --nav-checked-border: rgba(212,170,128,0);
+    --danger-pill-border: rgba(61,90,80,1);
+    --accent-1-q30: rgba(212,170,48,0);
+    --accent-1-q25: rgba(212,170,37,0);
+    --accent-1-q18: rgba(212,170,24,0);
+    --accent-1-q80: rgba(212,170,128,0);
+
+    /* Tier 21 tokens (ui/theme.py ThemeColors) */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 22px;
+    --font-xs: 10px;
+    --font-sm: 12px;
+    --font-md: 13px;
+    --font-lg: 16px;
+    --font-xl: 21px;
+    --dur-fast: 150ms;
+    --dur-normal: 250ms;
+    --dur-slow: 400ms;
+    --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+
+    /* add_shadow(widget) defaults: blur 36, y 10, black alpha 180 */
+    --shadow: drop-shadow(0 10px 13px rgba(0,0,0,0.706));
+    --font-ui: "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", system-ui, sans-serif;
+    --font-mono: Consolas, "Cascadia Mono", monospace;
+}

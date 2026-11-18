@@ -1,0 +1,720 @@
+{
+ "close tab": {
+  "calls": [
+   [
+    "pyautogui.hotkey",
+    [
+     "ctrl",
+     "w"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Closed the current tab."
+ },
+ "close window": {
+  "calls": [
+   [
+    "pyautogui.hotkey",
+    [
+     "alt",
+     "f4"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Closed the current window."
+ },
+ "close_app exact": {
+  "calls": [
+   [
+    "terminate",
+    1
+   ]
+  ],
+  "returns": "Closed Chrome.exe."
+ },
+ "close_app not running": {
+  "calls": [],
+  "returns": "'ghost' doesn't appear to be running."
+ },
+ "close_app substring picks first": {
+  "calls": [
+   [
+    "terminate",
+    2
+   ]
+  ],
+  "returns": "Closed code.exe."
+ },
+ "delete_latest picks newest user shot": {
+  "calls": [],
+  "returns": "Successfully deleted the latest screenshot."
+ },
+ "delete_latest with none": {
+  "calls": [],
+  "returns": "No screenshots found in the folder to delete."
+ },
+ "open_app key press raises": {
+  "calls": [],
+  "returns": "Error opening calc."
+ },
+ "open_app website": {
+  "calls": [
+   [
+    "webbrowser.open",
+    [
+     "https://www.youtube.com"
+    ]
+   ]
+  ],
+  "returns": "Successfully opened youtube in browser."
+ },
+ "open_app win-key": {
+  "calls": [
+   [
+    "pyautogui.press",
+    [
+     "win"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.write",
+    [
+     "notepad++"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Successfully opened notepad++."
+ },
+ "open_website browser missing": {
+  "calls": [
+   [
+    "webbrowser.open",
+    [
+     "https://www.youtube.com"
+    ]
+   ]
+  ],
+  "returns": "Couldn't find brave installed, so I opened youtube in your default browser instead."
+ },
+ "open_website known+query+browser found": {
+  "calls": [
+   [
+    "Popen",
+    [
+     [
+      "C:/fake/brave.exe",
+      "https://www.youtube.com/results?search_query=lofi+beats"
+     ]
+    ]
+   ]
+  ],
+  "returns": "Opened lofi beats on youtube in Brave."
+ },
+ "open_website raw url": {
+  "calls": [
+   [
+    "webbrowser.open",
+    [
+     "https://example.org/x"
+    ]
+   ]
+  ],
+  "returns": "Opened https://example.org/x in your default browser."
+ },
+ "open_website unknown site": {
+  "calls": [
+   [
+    "webbrowser.open",
+    [
+     "https://www.mysite.com"
+    ]
+   ]
+  ],
+  "returns": "Opened My Site in your default browser."
+ },
+ "open_website unknown site+query": {
+  "calls": [
+   [
+    "webbrowser.open",
+    [
+     "https://www.google.com/search?q=cats+my+site"
+    ]
+   ]
+  ],
+  "returns": "Opened cats on my site in your default browser."
+ },
+ "screenshots left": [
+  "Wave_20260101_000001.png",
+  "wave_internal_x.png"
+ ],
+ "system setting display": {
+  "calls": [
+   [
+    "os.system",
+    "start ms-settings:display"
+   ]
+  ],
+  "returns": "Successfully opened Display settings for you."
+ },
+ "system setting unknown": {
+  "calls": [],
+  "returns": "Could not find the requested system setting."
+ },
+ "take_screenshot": {
+  "calls": [
+   [
+    "pyautogui.screenshot",
+    [
+     "<ROOT>/screenshots/Wave_20260101_000000.png"
+    ],
+    {}
+   ],
+   [
+    "os.system",
+    "explorer \"<ROOT>/screenshots/Wave_20260101_000000.png\""
+   ]
+  ],
+  "returns": "Screenshot captured and saved in your project folder."
+ },
+ "toggle_hardware bluetooth off": {
+  "calls": [
+   [
+    "os.system",
+    "start ms-settings:bluetooth"
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.press",
+    [
+     "space"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.2
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "alt",
+     "f4"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Toggled Bluetooth - check that it's now set the way you wanted."
+ },
+ "toggle_hardware do a barrel roll": {
+  "calls": [],
+  "returns": "Hardware toggle not recognized."
+ },
+ "toggle_hardware hotspot please": {
+  "calls": [
+   [
+    "os.system",
+    "start ms-settings:network-mobilehotspot"
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.press",
+    [
+     "space"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.2
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "alt",
+     "f4"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Toggled Mobile Hotspot - check that it's now set the way you wanted."
+ },
+ "toggle_hardware turn on wifi": {
+  "calls": [
+   [
+    "os.system",
+    "start ms-settings:network-wifi"
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.press",
+    [
+     "space"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.2
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "alt",
+     "f4"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Toggled Wi-Fi - check that it's now set the way you wanted."
+ },
+ "whatsapp cannot verify": {
+  "calls": [
+   [
+    "sleep",
+    0.6
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "ctrl",
+     "f"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.write",
+    [
+     "Riya"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    1.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "down"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.3
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "pyautogui.write",
+    [
+     "hello there"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Typed and sent 'hello there' towards Riya's chat on WhatsApp, but I couldn't visually confirm it landed in the right place - worth a quick check."
+ },
+ "whatsapp confirmed": {
+  "calls": [
+   [
+    "sleep",
+    0.6
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "ctrl",
+     "f"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.write",
+    [
+     "Riya"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    1.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "down"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.3
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "pyautogui.write",
+    [
+     "hello there"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Sent 'hello there' to Riya on WhatsApp."
+ },
+ "whatsapp launches then focuses": {
+  "calls": [
+   [
+    "os.system",
+    "start whatsapp:"
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    0.6
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "ctrl",
+     "f"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.write",
+    [
+     "Riya"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    1.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "down"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.3
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "pyautogui.write",
+    [
+     "hello there"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ]
+  ],
+  "returns": "Sent 'hello there' to Riya on WhatsApp."
+ },
+ "whatsapp not installed -> web fallback": {
+  "calls": [
+   [
+    "os.system",
+    "start whatsapp:"
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "sleep",
+    1
+   ],
+   [
+    "webbrowser.open",
+    [
+     "https://web.whatsapp.com"
+    ]
+   ]
+  ],
+  "returns": "WhatsApp Desktop isn't installed on this PC, so I opened WhatsApp Web instead - you'll need to send 'hello there' to Riya yourself from there once it's scanned/loaded."
+ },
+ "whatsapp wrong chat": {
+  "calls": [
+   [
+    "sleep",
+    0.6
+   ],
+   [
+    "pyautogui.hotkey",
+    [
+     "ctrl",
+     "f"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1.2
+   ],
+   [
+    "pyautogui.write",
+    [
+     "Riya"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    1.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "down"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.3
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    1
+   ]
+  ],
+  "returns": "I searched for 'Riya' but couldn't confirm their chat actually opened, so I didn't send anything - didn't want to risk messaging the wrong person. Try again, or open the chat yourself first."
+ },
+ "write_in_notepad": {
+  "calls": [
+   [
+    "pyautogui.press",
+    [
+     "win"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.write",
+    [
+     "notepad"
+    ],
+    {
+     "interval": 0.05
+    }
+   ],
+   [
+    "sleep",
+    0.5
+   ],
+   [
+    "pyautogui.press",
+    [
+     "enter"
+    ],
+    {}
+   ],
+   [
+    "sleep",
+    2
+   ],
+   [
+    "pyautogui.write",
+    [
+     "hello world"
+    ],
+    {
+     "interval": 0.05
+    }
+   ]
+  ],
+  "returns": "Successfully opened Notepad and wrote the text."
+ }
+}

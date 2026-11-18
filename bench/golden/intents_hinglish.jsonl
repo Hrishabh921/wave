@@ -1,0 +1,99 @@
+{"_defaults": {"l": "hinglish"}}
+{"t": "undo kar do", "i": "undo_last_action", "s": "typed"}
+{"t": "wapas kar do", "i": "undo_last_action", "s": "spoken"}
+{"t": "screenshot le lo", "i": "take_screenshot", "s": "typed"}
+{"t": "screenshot lo", "i": "take_screenshot", "s": "terse"}
+{"t": "pc lock kar do", "i": "lock_pc", "s": "typed"}
+{"t": "screen lock kar do", "i": "lock_pc", "s": "typed"}
+{"t": "awaaz badhao", "i": "volume_up", "s": "typed"}
+{"t": "volume badhao thoda", "i": "volume_up", "s": "spoken"}
+{"t": "awaaz tez karo", "i": "volume_up", "s": "typed"}
+{"t": "awaaz kam karo", "i": "volume_down", "s": "typed"}
+{"t": "volume kam karo zara", "i": "volume_down", "s": "spoken"}
+{"t": "awaaz dheere karo", "i": "volume_down", "s": "typed"}
+{"t": "mute kar do", "i": "mute_volume", "s": "typed", "n": "Tier 14: toggle_mute retired - replaced by one-directional mute_volume/unmute_volume."}
+{"t": "awaaz band karo", "i": "mute_volume", "s": "typed"}
+{"t": "open spotify kardo", "i": "open_app", "a": {"app_name": "spotify kardo"}, "s": "typed", "n": "the prefix rule just takes everything after 'open ' literally, Hinglish filler words included - args match reflects that as-is"}
+{"t": "close notepad please", "i": "close_app", "a": {"app_name": "notepad please"}, "s": "typed"}
+{"t": "pehle volume badhao phir chrome khol do", "i": "chat", "n": "_COMPOUND_INDICATORS includes ' phir ' - correctly deferred to the LLM rather than only acting on the first half"}
+{"t": "notepad band karo uske baad ek reminder set karo", "i": "chat", "n": "' uske baad ' is a compound indicator; also no close_app rule matches 'band karo' at all (only the English 'close ' prefix does)"}
+{"t": "pc lock mat karo", "i": "chat", "n": "'mat karo' is a negation marker - this means the OPPOSITE of lock_pc"}
+{"t": "awaaz badhao mat", "i": "chat", "n": "Tier 8: FIXED - _has_standalone_negator() now catches trailing post-positive 'mat' (mat AFTER the whole phrase, with nothing following it) as its own word, not just the pre-existing 'mat karo'/'mat kar' leading/attached forms in _NEGATION_MARKERS. Was previously volume_up by mistake - see brain/intent_router.py."}
+{"t": "kya mujhe pc lock karna chahiye", "i": "chat", "n": "'kya mujhe' is a hypothetical marker - a question, not a command"}
+{"t": "notepad band karo", "i": "close_app", "a": {"app_name": "notepad"}, "n": "Tier 8: FIXED - close_app now also matches verb-FINAL phrasing (' band karo' as a suffix) via the new _suffix_arg matcher, alongside the original English verb-first 'close ' prefix. This is the romanized half of the same gap intents_hi.jsonl's 'नोटपैड बंद करो' row documents for Devanagari - see _prefix_or_suffix_arg in brain/intent_router.py."}
+{"t": "chrome khol do", "i": "open_app", "a": {"app_name": "chrome"}, "s": "typed", "n": "Tier 8: added for symmetry with the close_app fix above - open_app now also matches verb-final ' khol do'/' kholo' suffixes, not just the English verb-first prefixes."}
+{"t": "spotify kholo", "i": "open_app", "a": {"app_name": "spotify"}, "s": "terse", "n": "Tier 8: the other verb-final open suffix ('kholo' alone, vs. 'khol do' above)."}
+{"t": "reminder lagao ki kal doctor jana hai", "i": "chat", "n": "reminders have no intent_router rule regardless of language"}
+{"t": "mausam kaisa hai aaj jaipur mein", "i": "chat", "n": "weather has no intent_router rule regardless of language"}
+{"t": "display settings kholo", "i": "open_system_setting", "a": {"setting": "display"}, "s": "typed", "n": "Tier 11"}
+{"t": "notepad mein doodh lana likho", "i": "write_notepad", "a": {"text": "doodh lana"}, "s": "typed", "n": "Tier 11"}
+{"t": "wifi band karo", "i": "toggle_hardware", "a": {"instruction": "wifi band karo"}, "s": "terse", "n": "Tier 11: used to fall through to close_app(' band karo') and ask to close an app called 'wifi'"}
+{"t": "pc shutdown karo", "i": "shutdown_pc", "s": "typed", "n": "Tier 14"}
+{"t": "pc restart karo", "i": "restart_pc", "s": "typed", "n": "Tier 14"}
+{"t": "pc ko sleep karo", "i": "sleep_pc", "s": "typed", "n": "Tier 14"}
+{"t": "pc hibernate karo", "i": "hibernate_pc", "s": "typed", "n": "Tier 14"}
+{"t": "pc se log off karo", "i": "log_off", "s": "typed", "n": "Tier 14"}
+{"t": "shutdown cancel karo", "i": "cancel_shutdown", "s": "typed", "n": "Tier 14"}
+{"t": "desktop dikhao", "i": "show_desktop", "s": "typed", "n": "Tier 14"}
+{"t": "window badlo", "i": "switch_window", "s": "typed", "n": "Tier 14"}
+{"t": "ise copy karo", "i": "copy_text", "s": "typed", "n": "Tier 15"}
+{"t": "copy kar do", "i": "copy_text", "s": "typed", "n": "Tier 15"}
+{"t": "ise paste karo", "i": "paste_text", "s": "typed", "n": "Tier 15"}
+{"t": "sab select karo", "i": "select_all_text", "s": "typed", "n": "Tier 15"}
+{"t": "naya tab kholo", "i": "new_tab", "s": "typed", "n": "Tier 15"}
+{"t": "agla tab", "i": "next_tab", "s": "terse", "n": "Tier 15"}
+{"t": "pichla tab", "i": "previous_tab", "s": "terse", "n": "Tier 15"}
+{"t": "page reload karo", "i": "reload_page", "s": "typed", "n": "Tier 15"}
+{"t": "zoom in karo", "i": "zoom_in", "s": "typed", "n": "Tier 15"}
+{"t": "zoom out karo", "i": "zoom_out", "s": "typed", "n": "Tier 15"}
+{"t": "zoom reset karo", "i": "zoom_reset", "s": "typed", "n": "Tier 15"}
+{"t": "upar scroll karo", "i": "scroll_up", "s": "typed", "n": "Tier 15"}
+{"t": "neeche scroll karo", "i": "scroll_down", "s": "typed", "n": "Tier 15"}
+{"t": "sabse upar scroll karo", "i": "scroll_to_top", "s": "typed", "n": "Tier 15"}
+{"t": "sabse neeche scroll karo", "i": "scroll_to_bottom", "s": "typed", "n": "Tier 15"}
+{"t": "downloads kholo", "i": "open_downloads", "s": "typed", "n": "Tier 15"}
+{"t": "documents kholo", "i": "open_documents", "s": "typed", "n": "Tier 15"}
+{"t": "pictures kholo", "i": "open_pictures", "s": "typed", "n": "Tier 15"}
+{"t": "music folder kholo", "i": "open_music", "s": "typed", "n": "Tier 15"}
+{"t": "videos kholo", "i": "open_videos", "s": "typed", "n": "Tier 15"}
+{"t": "recycle bin kholo", "i": "open_recycle_bin", "s": "typed", "n": "Tier 15"}
+{"t": "task manager kholo", "i": "open_task_manager", "s": "typed", "n": "Tier 15"}
+{"t": "control panel kholo", "i": "open_control_panel", "s": "typed", "n": "Tier 15"}
+{"t": "recycle bin khali karo", "i": "empty_recycle_bin", "s": "typed", "n": "Tier 15: T3/confirm-gated"}
+{"t": "trash khali karo", "i": "empty_recycle_bin", "s": "typed", "n": "Tier 15"}
+{"t": "kitne baje hain", "i": "get_current_time", "s": "typed", "n": "Tier 16"}
+{"t": "aaj ki tarikh kya hai", "i": "get_current_date", "s": "typed", "n": "Tier 16"}
+{"t": "roshni badhao", "i": "brightness_up", "s": "typed", "n": "Tier 17"}
+{"t": "battery kitni hai", "i": "get_battery_status", "s": "typed", "n": "Tier 17"}
+{"t": "koi joke sunao", "i": "get_joke", "s": "typed", "n": "Tier 17"}
+{"t": "awaaz 50 pe karo", "i": "set_volume", "s": "typed", "n": "Tier 17", "a": {"percent": 50}}
+{"t": "spotify kholo", "i": "open_app", "s": "typed", "a": {"app_name": "spotify"}}
+{"t": "discord kholo", "i": "open_app", "s": "typed", "a": {"app_name": "discord"}}
+{"t": "notepad band karo", "i": "close_app", "s": "typed", "a": {"app_name": "notepad"}}
+{"t": "spotify band karo", "i": "close_app", "s": "typed", "a": {"app_name": "spotify"}}
+{"t": "awaaz 20 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 20}}
+{"t": "awaaz 70 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 70}}
+{"t": "roshni 40 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 40}}
+{"t": "roshni 80 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 80}}
+{"t": "koi joke sunao", "i": "get_joke", "s": "typed"}
+{"t": "vscode kholo", "i": "open_app", "s": "typed", "a": {"app_name": "vscode"}}
+{"t": "whatsapp kholo", "i": "open_app", "s": "typed", "a": {"app_name": "whatsapp"}}
+{"t": "telegram band karo", "i": "close_app", "s": "typed", "a": {"app_name": "telegram"}}
+{"t": "awaaz 35 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 35}}
+{"t": "roshni 55 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 55}}
+{"t": "screenshot le lo", "i": "take_screenshot", "s": "typed"}
+{"t": "pc ko shutdown karo", "i": "shutdown_pc", "s": "typed"}
+{"t": "pc ko restart karo", "i": "restart_pc", "s": "typed"}
+{"t": "naya tab kholo", "i": "new_tab", "s": "typed"}
+{"t": "telegram kholo", "i": "open_app", "s": "typed", "a": {"app_name": "telegram"}}
+{"t": "paint kholo", "i": "open_app", "s": "typed", "a": {"app_name": "paint"}}
+{"t": "calculator kholo", "i": "open_app", "s": "typed", "a": {"app_name": "calculator"}}
+{"t": "paint band karo", "i": "close_app", "s": "typed", "a": {"app_name": "paint"}}
+{"t": "calculator band karo", "i": "close_app", "s": "typed", "a": {"app_name": "calculator"}}
+{"t": "teams kholo", "i": "open_app", "s": "typed", "a": {"app_name": "teams"}}
+{"t": "awaaz 10 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 10}}
+{"t": "awaaz 45 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 45}}
+{"t": "awaaz 60 pe karo", "i": "set_volume", "s": "typed", "a": {"percent": 60}}
+{"t": "roshni 15 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 15}}
+{"t": "roshni 65 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 65}}
+{"t": "roshni 95 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 95}}

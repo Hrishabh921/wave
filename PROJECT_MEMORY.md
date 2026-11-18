@@ -1,0 +1,73 @@
+# PROJECT_MEMORY — architecture reference
+
+Fast orientation for a contributor (human or AI) picking this codebase up without re-reading
+every file. This is a map, not a changelog — for tier-by-tier history see `CHANGELOG.md` and
+`docs/ROADMAP_BEAT_SARA.md`.
+
+## Top-level module map
+
+| Module | What lives there |
+|---|---|
+| `brain/` | The LLM core: `groq_core.py` (provider-agnostic chat client, the tool-calling loop, `think()`/`think_stream()`), `intent_router.py` (deterministic fast-path rules, no LLM round-trip), `followup_resolver.py` (pronoun/elliptical follow-ups), `skills_registry.py` + `skill_loader.py` (tool registration, hot-reload), and the whole security layer — `tiers.py`, `taint.py`, `content_trust.py`, `redaction.py`, `speak_guard.py`, `exfiltration.py`, `confirm_gate.py`. |
+| `brain/handlers/` | The actual tool *implementations* the registry points at — `system.py`, `automation.py`, `media.py`, `memory.py`, `productivity.py`, `reminders.py`, `timers.py`, `calendar.py`, `vision.py`, `web.py`, `fun.py`. If you're looking for what a tool *does*, it's here, not in `brain/groq_core.py`. |
+| `skills/` | A different, older, smaller thing: a tiny `SkillRegistry`-adjacent base (`base.py`, `registry.py`) plus a couple of standalone skills (`daily_briefing.py`, `self_diagnostics.py`) that predate the `brain/handlers/` convention. Don't confuse this with `brain/handlers/` or `user_skills/`. |
+| `user_skills/` | User-authored drop-in `.py` files, hot-reloaded by `brain/skill_loader.py`'s `UserSkillLoader` (polls for mtime/size changes, loads/unloads/reloads live, no restart). Can be enabled/disabled per-file from `ui/skills_panel.py` without touching the file (a sidecar `.disabled_skills.json`). |
+| `voice/` | The whole audio pipeline: `capture.py` (continuous `sounddevice` stream), `endpoint.py` (VAD endpointing), `aec.py` (echo cancellation), `wakeword.py` (acoustic wake-word scoring), `stt.py` (transcription — faster-whisper local, Google Web Speech cloud fallback), `language.py` (Hindi/English/Hinglish detection+routing), `text_prep.py` (number/date/currency-to-words normalization), `tts.py` + `tts_cache.py` (synthesis — edge-tts cloud default, Piper/Kokoro local), `audio_out.py` (persistent output stream), `audio_devices.py` (device enumeration/level test for the setup wizard). |
+| `automation/` | OS-level tool implementations and the proactive/safety machinery: `app_control.py` (open/close apps, window management, modes), `backends/` (per-OS abstraction — see below), `audit.py` (the "what did Wave do" log + undo timeline), `security_log.py` (the separate *policy-decision* log — see Security layer below), `undo.py`, `proactive.py` (the 10-trigger nudge engine), `calendar_manager.py`/`calendar_sync.py`, `workflow_scheduler.py`, `thread_supervisor.py`, `health_check.py`, `notes_rag.py`, `quick_notes.py`, `todo_manager.py`, `calculator.py`, `file_manager.py`, `streak_manager.py`. |
+| `ui/` | PyQt6 presentation layer. `main_window.py` is the shell (nav, page stack, settings persistence, command palette wiring); every `*_panel.py` is one management page (Memory, Reminders, Notes & To-dos, Calendar, Skills, Performance, plus Settings in `settings_panel.py`); `theme.py`/`effects.py` hold the design-token system (spacing/radius/type-scale/motion tokens, the 11-theme roster); `onboarding.py` is the setup wizard; `workers.py`/`worker_pool.py` run blocking work off the GUI thread. |
+| `database/` | `db_manager.py` is the single SQLite schema + every query method (one big class, `db`, imported everywhere); `db_writer.py` is the one background writer thread every write actually goes through, so the GUI/voice hot path never blocks on disk; `embeddings.py` is the optional semantic-similarity layer (`sentence-transformers`, used for memory fact-supersede). |
+| `telemetry/` | `trace.py` (per-turn tracing, `mark()`/`annotate()`/`end_turn()`, redaction-filtered), `ttfa.py`/`ttfa_report.py` (time-to-first-audio measurement), `usage_stats.py` (opt-in local-only usage summary read off `trace.py`'s own table), `store.py` (the background SQLite writer for trace rows). |
+| `bench/` | The evaluation harness, independent of the running app: `run_bench.py` (CLI entry, `--mode all/router/redteam`, `--compare` against `baseline.json`), `golden/` (the ≥600-row intent-routing set), `redteam/` (the ≥180-row prompt-injection set), `dataset.py`/`metrics.py`/`runner.py`/`redteam_runner.py`, `augment_stt_noise.py` (synthetic noisy-transcript variants, reported separately, never blended into the scored set). |
+| `planning/` | The multi-step planner for compound requests: `planner.py`, `executor.py` (per-step dispatch timeouts under one overall deadline), `schema.py`, `trigger.py`. |
+| `reminders/` | `composer.py`/`context.py` — reminder phrasing and natural-language due-date context, used by `WaveBrain._set_reminder()`. |
+| `web/` | `web_ops.py` — the one place outbound HTTP fetches happen (page summarization), with an SSRF guard (`validate_url()`) and hidden-element stripping before extraction. |
+| `vision/` | `screen_capture.py` + `ocr_engine.py` — screenshot capture and Tesseract OCR, used by both `read_screen_text` and as `describe_screen`'s fallback when no vision-capable LLM answers. |
+| `settings/` | `config.py` — the one place every env-var-overridable setting lives (see convention below); `logging_config.py` — log handler setup, with the redaction filter and per-turn correlation-ID filter attached here. |
+| `scripts/` | Standalone maintenance scripts: `train_wake_word.py`, `review_unmatched_utterances.py`, `windows_smoke_check.py`. |
+| `monitoring/` | `sys_monitor.py`/`media_info.py` — CPU/battery/disk and now-playing-media readers used by system-info tools and the proactive engine. |
+| `data/` | Runtime-written data files (`unmatched_utterances.jsonl`, etc.) — not code. |
+
+## A turn's full lifecycle
+
+Traced from the actual call sites, not assumed:
+
+1. **Capture** — `voice/capture.py`'s continuous `sounddevice` stream (pre-roll ring buffer) feeds `voice/endpoint.py` (VAD-based endpointing) and `voice/aec.py` (per-frame echo cancellation against `voice/audio_out.py`'s persistent output stream).
+2. **Wake word** — while asleep, `voice/wakeword.py` scores raw frames *before* any transcription happens; only a positive score (plus a transcript-match confirmation) wakes the mic worker.
+3. **Transcription** — `voice/stt.py` transcribes (faster-whisper local by default, Google Web Speech Recognition as fallback), applying `voice/language.py`'s sticky English/Hindi/Hinglish detection and hallucination/repetition filtering.
+4. **Follow-up resolution** — `brain/groq_core.py::think()`/`think_stream()` first tries `brain/followup_resolver.py` (pronoun/elliptical shapes like "close it", "and Jaipur?"), dispatching through the *same* `_dispatch_tool()` path as everything else if it matches.
+5. **Fast-path routing** — if no follow-up matched, `brain/intent_router.py` tries its ~135 deterministic rules (English/Hinglish/Devanagari phrasings, with negation/conditional/compound guards) before ever calling the LLM.
+6. **LLM + tool-calling loop** — on a fast-path miss, `brain/groq_core.py`'s `think()`/`think_stream()` calls the configured provider (Groq by default, Ollama/OpenAI/OpenRouter/custom as alternatives) with the tool specs from `brain/skills_registry.py`, and loops on whatever tool calls come back.
+7. **Security gate** — every tool call (fast-path or LLM) goes through `_guard()`/`_guard_keyword()` in `brain/groq_core.py`, which consults `brain/tiers.py` (risk tier T0–T3) and `brain/taint.py` (was this turn's context already marked untrusted/flagged — set by `brain/content_trust.py::wrap_untrusted()` whenever a web page, OCR'd screen, or attachment is read) to decide allow / confirm-first / deny outright (`tiers.TAINT_DENY_TOOLS` for keyboard tools) / exfiltration-deny (`brain/exfiltration.py`, for a tainted turn asking to visit a URL carrying a secret or long encoded blob).
+8. **Handler dispatch** — an allowed call reaches the real implementation in `brain/handlers/*.py`; `automation/audit.py` logs the outcome (undo-capable actions get an undo recipe too) and, separately, `automation/security_log.py` logs the *policy decision* (tier/taint/mode/reason) whenever the guard did something interesting (allow-with-escalation, confirm, deny).
+9. **Speech out** — for a voice turn, the reply goes through `brain/speak_guard.py` (secret redaction + "don't read flagged content verbatim" rewrite) before `voice/tts.py` synthesizes it (edge-tts cloud by default; Piper/Kokoro local if installed and enabled), routing per-chunk through `voice/language.py` again so a mixed-language reply switches voices mid-sentence.
+
+Not confirmed by direct tracing (reasonable inference only): the exact ordering between `trace.begin_turn()`/`trace.annotate()` calls and step 7's guard — annotation clearly happens throughout, but the precise interleaving with telemetry marks wasn't walked line-by-line here.
+
+## Where the security/trust layer actually sits
+
+- **`brain/tiers.py`** — the risk-tier table (T0 read-only → T3 destructive-with-confirm) every tool is classified into, plus `TAINT_DENY_TOOLS` (keyboard tools, outright denied once tainted) and `URL_ARG_TOOLS` (tools whose URL argument gets exfiltration-checked). Consulted by `_guard()`.
+- **`brain/taint.py`** — per-turn "did this turn already read something untrusted" state (`mark_turn()`, `turn_tainted()`, `turn_sources()`, `turn_flagged()`), cleared at the start of every turn in `think()`/`think_stream()`.
+- **`brain/content_trust.py`** — the untrusted-content scanner: normalizes evasion tricks (zero-width/bidi/Unicode-tag chars, letter-spacing), joins recent cross-turn chunks before re-scanning (catches word-by-word split injection), and is what actually calls `taint.mark_turn()` via `wrap_untrusted()` whenever a web page/OCR/attachment is wrapped for the LLM to read.
+- **`automation/security_log.py`** — a RAM-only, capped, thread-safe log of *policy decisions* (tier, taint, mode, a plain-language reason) — deliberately separate from `automation/audit.py`'s "what did Wave do" trail (see that module's own docstring for the full reasoning). Backs Settings > Security's event list and the `why_did_you_do_that`/`why_did_you_notify_me` tools.
+- **`brain/redaction.py`** — regex-based secret scanner (15 kinds — 8 general + 7 India-specific), scrubbing `[REDACTED:<kind>]` into logs, telemetry, and diagnostics before they're ever written.
+- **`brain/speak_guard.py`** — the same redaction, applied specifically to text about to be spoken, plus a second check that replaces flagged content with a plain safety notice instead of reading it back verbatim.
+- **`brain/exfiltration.py`** — detects a tainted turn asking `open_website`/`summarize_page`/`add_ics_feed` to visit a URL whose query/path smuggles out a secret or long encoded blob, and denies it — a different concern from `web/web_ops.py`'s SSRF guard (which stops Wave's own fetches from reaching internal IPs, taint or no taint).
+
+## Key cross-cutting conventions
+
+- **`HAS_X` optional-dependency pattern** — every optional dependency (`HAS_PIPER` in `voice/tts.py`, `HAS_PYAUDIO`/`HAS_SR` in `voice/audio_devices.py`, `HAS_GOOGLE_CALENDAR` in `automation/calendar_sync.py`, etc.) is a module-level flag set in a `try`/`except ImportError`, with **every name the `except` branch would otherwise leave undefined bound to `None`** (not just the flag) — required because `mock.patch.object` needs the attribute to already exist on the module whether or not the real package is installed. Code checks the flag and degrades gracefully (an honest "not available" result) rather than crashing.
+- **`automation/backends/` per-OS abstraction** — `base.py` defines the `Shell` helper and the contract every backend fulfils; `windows.py`/`linux.py`/`macos.py` implement it. A backend method either returns the sentence Wave should say, or raises `NotSupported` (turned into a friendly "isn't supported on this OS yet" reply, never a crash). New system tools go through this, never a direct OS call in a handler.
+- **The fake-Qt test harness** — there's no display or real PyQt6 in the build sandbox, so `tests/test_phase4_ui_logic.py` installs a tiny stand-in PyQt6 module (`install_stub()`) that records widget construction/wiring instead of rendering. Later test files *extend* this stand-in rather than rebuilding it — e.g. `tests/test_tier5_ui_logic.py`'s `install_stub_with_list_widgets()` layers in a real `QListWidget`/`QLineEdit`, and later files layer in `QComboBox`/`QCheckBox`/`QTableWidget` the same way, via `widgets.OVERRIDES["WidgetName"] = FakeClass`. `REAL_QT` detection (`try: import PyQt6`) must happen at **module level**, not inside `setUpClass`, because an earlier test's import-retry loop can leave a fake `sys.modules["PyQt6"]` cached within the same pytest process.
+- **`settings/config.py`** — the one place every tunable lives, each as `NAME = os.getenv("NAME", default)` (or the typed `_int`/`_float` env-parsing helpers near the top of the file). No tool or UI panel should read `os.environ` directly — add a `config.NAME` instead.
+
+## Where to look for X
+
+| To... | Look at |
+|---|---|
+| Add a new tool | `brain/handlers/*.py` (implementation) + `brain/tiers.py` (risk tier entry — enforced by `tests/test_security_tiers.py`) + `brain/intent_router.py` (fast-path phrasings, if parameter-free) + a `bench/golden/` row + a test. |
+| Add a new DB-backed feature | `database/db_manager.py` (schema + query methods) + a new/existing `ui/*_panel.py` (if it needs a management page) + the voice-command handler in `brain/handlers/`. |
+| Add a drop-in user skill | Nothing in core code — drop a `.py` file in `user_skills/` using the `@skill(...)` decorator; `brain/skill_loader.py` picks it up within one poll interval. |
+| Change what's logged for a tool call | `automation/audit.py` (the "what happened" record) vs `automation/security_log.py` (the "why the guard decided X" record) — pick based on which question you're answering. |
+| Add a new proactive nudge | `automation/proactive.py`'s `ProactiveEngine.check_once()` sweep, with its own `PROACTIVE_*_ENABLED` flag in `settings/config.py`. |
+| Add a new optional/local-only capability | Follow the `HAS_X` pattern above; add the heavy dependency to `requirements-voice-local.txt`, never the base `requirements.txt`. |
+| Grow the evaluation set | `bench/golden/*.jsonl` (routing) or `bench/redteam/attacks.jsonl` (injection) + `python -m bench.run_bench --mode all --compare` to check for regressions against `bench/baseline.json`. |

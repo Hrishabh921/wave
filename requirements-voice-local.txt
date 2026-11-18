@@ -1,0 +1,40 @@
+# Wave AI — optional ON-DEVICE voice pieces (Tier 11)
+#
+#   pip install -r requirements.txt -r requirements-voice-local.txt
+#
+# Everything here is optional: without it Wave keeps working exactly as
+# before (transcript-based wake word, energy VAD, edge-tts / SAPI voices).
+# All three ship prebuilt Windows wheels for Python 3.11 (checked on PyPI:
+# openwakeword py3-none-any, webrtcvad-wheels cp311-win_amd64,
+# piper-tts abi3-win_amd64, onnxruntime cp311-win_amd64) - no compiler
+# needed, which is what Tier 7's plain `webrtcvad` lacked.
+
+# Acoustic wake word: runs Wave's bundled "Hey Wave" model
+# (voice_models/wakewords/hey_wave.onnx). While Wave is asleep, nothing you
+# say is transcribed until it hears the wake word. Its two small feature
+# files are downloaded from openWakeWord's GitHub releases on first use.
+# Code: Apache-2.0. (Its OWN pretrained wake models are CC BY-NC-SA 4.0 -
+# Wave never bundles those; see docs/WAKE_WORD.md.)
+openwakeword==0.6.0
+onnxruntime==1.20.1
+
+# Real voice-activity detection (voice/buffers.py) - prebuilt wheels of
+# the same WebRTC VAD as `webrtcvad`, same import name.
+webrtcvad-wheels==2.0.14
+
+# Local neural voice (voice/tts.py's Piper path). GPL-3.0-or-later -
+# fine to install and use; mind it if you redistribute a bundle with it.
+# Not bundled into WaveAI.exe by wave.spec.
+piper-tts==1.3.0
+
+# Tier 13: Kokoro - a SECOND, optional local neural voice, and the only
+# one of the two that genuinely speaks Hindi (Piper above is English
+# only). MIT-licensed. Off by default (TTS_KOKORO_ENABLED) - CPU
+# synthesis measured at roughly 2x real time for both languages, a real
+# latency tradeoff worth deciding into deliberately - see
+# docs/VOICE_LOCAL.md. Its two model files (~120MB) are downloaded by
+# this project itself on first use (opt-in via TTS_KOKORO_AUTO_DOWNLOAD),
+# since kokoro-onnx ships no download CLI of its own the way piper-tts
+# does. Windows-wheel coverage not independently verified here - same
+# caveat as piper-tts above.
+kokoro-onnx==0.6.1

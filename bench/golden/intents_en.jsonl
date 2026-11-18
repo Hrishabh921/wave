@@ -1,0 +1,340 @@
+{"_defaults": {"l": "en"}}
+{"t": "undo that", "i": "undo_last_action", "s": "typed"}
+{"t": "undo my last action", "i": "undo_last_action", "s": "typed"}
+{"t": "take that back", "i": "undo_last_action", "s": "spoken"}
+{"t": "close this window", "i": "close_current_window", "s": "typed"}
+{"t": "close all windows", "i": "close_current_window", "s": "typed"}
+{"t": "close the tab", "i": "close_current_tab", "s": "typed"}
+{"t": "delete the screenshot", "i": "delete_latest_screenshot", "s": "typed"}
+{"t": "take a screenshot", "i": "take_screenshot", "s": "typed"}
+{"t": "capture screen", "i": "take_screenshot", "s": "typed"}
+{"t": "what's on my screen", "i": "read_screen_text", "s": "typed"}
+{"t": "read the screen for me", "i": "read_screen_text", "s": "spoken"}
+{"t": "pc info", "i": "get_pc_info", "s": "terse"}
+{"t": "how's my pc doing", "i": "get_pc_info", "s": "spoken"}
+{"t": "what's in my clipboard", "i": "get_clipboard", "s": "typed"}
+{"t": "lock my pc", "i": "lock_pc", "s": "typed"}
+{"t": "lock the screen", "i": "lock_pc", "s": "typed"}
+{"t": "pause", "i": "media_play_pause", "s": "terse"}
+{"t": "resume", "i": "media_play_pause", "s": "terse"}
+{"t": "pause the music", "i": "media_play_pause", "s": "typed"}
+{"t": "next song", "i": "media_next_track", "s": "typed"}
+{"t": "skip this song", "i": "media_next_track", "s": "typed"}
+{"t": "previous song", "i": "media_previous_track", "s": "typed"}
+{"t": "go back a song", "i": "media_previous_track", "s": "spoken"}
+{"t": "volume up", "i": "volume_up", "s": "terse"}
+{"t": "turn up the volume", "i": "volume_up", "s": "typed"}
+{"t": "louder", "i": "volume_up", "s": "terse"}
+{"t": "volume down", "i": "volume_down", "s": "terse"}
+{"t": "quieter please", "i": "volume_down", "s": "spoken"}
+{"t": "mute", "i": "mute_volume", "s": "terse", "n": "Tier 14: toggle_mute retired - replaced by one-directional mute_volume/unmute_volume."}
+{"t": "unmute", "i": "unmute_volume", "s": "terse"}
+{"t": "mute the sound", "i": "mute_volume", "s": "typed"}
+{"t": "turn on wifi", "i": "toggle_hardware", "a": {"instruction": "turn on wifi"}, "s": "typed"}
+{"t": "turn off bluetooth", "i": "toggle_hardware", "a": {"instruction": "turn off bluetooth"}, "s": "typed"}
+{"t": "switch on the hotspot", "i": "toggle_hardware", "a": {"instruction": "switch on the hotspot"}, "s": "typed"}
+{"t": "open spotify", "i": "open_app", "a": {"app_name": "spotify"}, "s": "typed"}
+{"t": "launch notepad", "i": "open_app", "a": {"app_name": "notepad"}, "s": "typed"}
+{"t": "start calculator", "i": "open_app", "a": {"app_name": "calculator"}, "s": "typed"}
+{"t": "close notepad", "i": "close_app", "a": {"app_name": "notepad"}, "s": "typed"}
+{"t": "close chrome", "i": "close_app", "a": {"app_name": "chrome"}, "s": "typed"}
+{"t": "play lofi beats", "i": "play_youtube", "a": {"query": "lofi beats"}, "s": "typed"}
+{"t": "play some jazz", "i": "play_youtube", "a": {"query": "some jazz"}, "s": "typed"}
+{"t": "search for best pizza near me", "i": "search_google", "a": {"query": "best pizza near me"}, "s": "typed"}
+{"t": "search for lofi beats on youtube", "i": "play_youtube", "a": {"query": "lofi beats"}, "s": "typed", "n": "search_or_play: a youtube-flavoured search routes to play_youtube, not search_google"}
+{"t": "create a folder called Taxes", "i": "create_folder", "a": {"folder_name": "taxes"}, "s": "typed", "n": "folder_name is always lowercase - route() lowercases the whole message before matching"}
+{"t": "make a folder named Trip Photos", "i": "create_folder", "a": {"folder_name": "trip photos"}, "s": "typed"}
+{"t": "remind me to call mom at 5pm", "i": "chat", "n": "reminders are deliberately left to the LLM - no intent_router rule covers them"}
+{"t": "what's the weather in jaipur today", "i": "chat", "n": "weather has no intent_router rule"}
+{"t": "send a whatsapp message to raj saying I'm running late", "i": "chat", "n": "whatsapp has no intent_router rule"}
+{"t": "what's 2 plus 2", "i": "chat", "n": "general knowledge, not a tool command at all"}
+{"t": "create a calendar event for my dentist appointment tomorrow", "i": "chat", "n": "calendar has no intent_router rule"}
+{"t": "open the file from last week's meeting notes please", "i": "chat", "n": "prefix_arg's _MAX_PREFIX_ARG_WORDS guard - the tail after 'open ' is too long to be a plausible app name"}
+{"t": "close enough", "i": "chat", "n": "_PREFIX_ARG_IDIOM_STARTS guard - 'enough' after 'close ' is the idiom, not an app name"}
+{"t": "play devil's advocate for a second", "i": "chat", "n": "_PREFIX_ARG_IDIOM_STARTS guard on play_youtube's prefix too"}
+{"t": "open display settings", "i": "open_system_setting", "a": {"setting": "display"}, "s": "typed", "n": "Tier 11: used to reach open_app('display settings'); only the UI's removed keyword layer sent it to the settings app"}
+{"t": "open the wi-fi settings", "i": "open_system_setting", "a": {"setting": "wifi"}, "s": "typed", "n": "Tier 11: spoken spelling normalized"}
+{"t": "open settings", "i": "open_system_setting", "a": {"setting": "settings"}, "s": "terse"}
+{"t": "open chrome settings", "i": "open_app", "a": {"app_name": "chrome settings"}, "s": "typed", "n": "Tier 11: not a system settings page - open_settings declines it, open_app keeps today's behaviour"}
+{"t": "write buy milk today in notepad", "i": "write_notepad", "a": {"text": "buy milk today"}, "s": "typed", "n": "Tier 11: used to be handled only by the UI's removed keyword layer (and only with an LLM afterwards)"}
+{"t": "type hello world into notepad", "i": "write_notepad", "a": {"text": "hello world"}, "s": "typed"}
+{"t": "kill chrome", "i": "close_app", "a": {"app_name": "chrome"}, "s": "terse", "n": "Tier 11: close_app is T2 - still asks first"}
+{"t": "disable bluetooth", "i": "toggle_hardware", "a": {"instruction": "disable bluetooth"}, "s": "terse", "n": "Tier 11"}
+{"t": "shut down the pc", "i": "shutdown_pc", "s": "typed", "n": "Tier 14: delayed+cancellable power action"}
+{"t": "restart the pc", "i": "restart_pc", "s": "typed", "n": "Tier 14"}
+{"t": "put the pc to sleep", "i": "sleep_pc", "s": "typed", "n": "Tier 14: Wave-owned timer, no native OS delay for sleep"}
+{"t": "hibernate the pc", "i": "hibernate_pc", "s": "typed", "n": "Tier 14: not available on every OS - see automation/backends/macos.py"}
+{"t": "log off the pc", "i": "log_off", "s": "typed", "n": "Tier 14"}
+{"t": "cancel shutdown", "i": "cancel_shutdown", "s": "terse", "n": "Tier 14: cancels whichever of the five power actions above is pending"}
+{"t": "show the desktop", "i": "show_desktop", "s": "typed", "n": "Tier 14: same backend call as minimize_all_windows - see AppController's own comment"}
+{"t": "switch window", "i": "switch_window", "s": "terse", "n": "Tier 14: the OS's own alt-tab/cmd-tab, as opposed to focus_window's 'switch to this one by name'"}
+{"t": "copy that", "i": "copy_text", "s": "terse", "n": "Tier 15: keyboard"}
+{"t": "paste this", "i": "paste_text", "s": "terse", "n": "Tier 15"}
+{"t": "select all", "i": "select_all_text", "s": "terse", "n": "Tier 15"}
+{"t": "press undo", "i": "undo_keystroke", "s": "typed", "n": "Tier 15: deliberately NOT bare 'undo' - that's already undo_last_action (Wave's own undo), a genuinely different skill"}
+{"t": "redo that", "i": "redo_keystroke", "s": "terse", "n": "Tier 15"}
+{"t": "press enter", "i": "press_key", "s": "typed", "a": {"key_combo": "enter"}, "n": "Tier 15: press_key's one fixed-phrase exception (_press_fixed_key)"}
+{"t": "hit escape", "i": "press_key", "s": "typed", "a": {"key_combo": "escape"}, "n": "Tier 15"}
+{"t": "press tab", "i": "press_key", "s": "typed", "a": {"key_combo": "tab"}, "n": "Tier 15"}
+{"t": "new tab", "i": "new_tab", "s": "terse", "n": "Tier 15: browser control"}
+{"t": "next tab", "i": "next_tab", "s": "terse", "n": "Tier 15"}
+{"t": "previous tab", "i": "previous_tab", "s": "terse", "n": "Tier 15"}
+{"t": "reload the page", "i": "reload_page", "s": "typed", "n": "Tier 15"}
+{"t": "zoom in", "i": "zoom_in", "s": "terse", "n": "Tier 15"}
+{"t": "zoom out", "i": "zoom_out", "s": "terse", "n": "Tier 15"}
+{"t": "reset zoom", "i": "zoom_reset", "s": "terse", "n": "Tier 15"}
+{"t": "scroll up", "i": "scroll_up", "s": "terse", "n": "Tier 15"}
+{"t": "scroll down", "i": "scroll_down", "s": "terse", "n": "Tier 15"}
+{"t": "scroll to the top", "i": "scroll_to_top", "s": "typed", "n": "Tier 15"}
+{"t": "scroll to the bottom", "i": "scroll_to_bottom", "s": "typed", "n": "Tier 15"}
+{"t": "open downloads", "i": "open_downloads", "s": "terse", "n": "Tier 15: folder shortcuts"}
+{"t": "open documents", "i": "open_documents", "s": "terse", "n": "Tier 15"}
+{"t": "open pictures", "i": "open_pictures", "s": "terse", "n": "Tier 15"}
+{"t": "open music", "i": "open_music", "s": "terse", "n": "Tier 15"}
+{"t": "open videos", "i": "open_videos", "s": "terse", "n": "Tier 15"}
+{"t": "open this pc", "i": "open_this_pc", "s": "typed", "n": "Tier 15"}
+{"t": "open the recycle bin", "i": "open_recycle_bin", "s": "typed", "n": "Tier 15"}
+{"t": "open task manager", "i": "open_task_manager", "s": "typed", "n": "Tier 15"}
+{"t": "open control panel", "i": "open_control_panel", "s": "typed", "n": "Tier 15"}
+{"t": "empty the recycle bin", "i": "empty_recycle_bin", "s": "typed", "n": "Tier 15: T3/confirm-gated - fast-pathing only skips the LLM round-trip, never the confirmation (same as shutdown_pc above)"}
+{"t": "set the clipboard to hello", "i": "set_clipboard", "n": "Tier 17: moved from chat - set_clipboard now has a dedicated fast-path rule (prefix \"set the clipboard to \"/\"set clipboard to \", case-preserving text arg) - see intent_router.py's _RULES and _CASE_PRESERVING_ARGS", "s": "typed"}
+{"t": "type hello world", "i": "type_text", "n": "Tier 17: moved from chat - type_text now has a dedicated fast-path rule (prefix \"type \", positioned after write_notepad's own \"type \"+\"in notepad\" rule so that more specific case still wins) - see intent_router.py's _RULES", "s": "typed"}
+{"t": "watch for a download", "i": "watch_for_download", "s": "typed", "n": "Tier 15: download watch"}
+{"t": "let me know when my download finishes", "i": "watch_for_download", "s": "typed", "n": "Tier 15"}
+{"t": "cancel the download watch", "i": "cancel_download_watch", "s": "typed", "n": "Tier 15"}
+{"t": "what time is it", "i": "get_current_time", "s": "typed", "n": "Tier 16: deterministic time/date"}
+{"t": "tell me the time", "i": "get_current_time", "s": "spoken"}
+{"t": "what's the date today", "i": "get_current_date", "s": "typed"}
+{"t": "what day is it today", "i": "get_current_date", "s": "spoken"}
+{"t": "what time is it right now", "i": "get_current_time", "s": "spoken", "n": "Tier 16: moved here from negatives.jsonl - that row predated get_current_time and was just a generic chatty-question example, not a deliberate near-miss guard (unlike the play_guitar/volume_discounts/music rows still there, which DO explain why they must stay chat). Answering this fast and deterministically is the whole point of this tier's work."}
+{"t": "tell me a joke", "i": "get_joke", "s": "typed", "n": "Tier 17: moved from negatives.jsonl (was chat) - get_joke now has a dedicated fast-path rule (bare _contains phrase) - see intent_router.py's _RULES"}
+{"t": "brightness up", "i": "brightness_up", "s": "typed", "n": "Tier 17"}
+{"t": "brightness down", "i": "brightness_down", "s": "typed", "n": "Tier 17"}
+{"t": "full brightness", "i": "brightness_max", "s": "typed", "n": "Tier 17"}
+{"t": "minimum brightness", "i": "brightness_min", "s": "typed", "n": "Tier 17"}
+{"t": "volume max", "i": "volume_max", "s": "typed", "n": "Tier 17"}
+{"t": "volume min", "i": "volume_min", "s": "typed", "n": "Tier 17"}
+{"t": "battery status", "i": "get_battery_status", "s": "typed", "n": "Tier 17"}
+{"t": "brightness status", "i": "get_brightness_status", "s": "typed", "n": "Tier 17"}
+{"t": "cpu temperature", "i": "get_cpu_temperature", "s": "typed", "n": "Tier 17"}
+{"t": "disk usage", "i": "get_disk_usage", "s": "typed", "n": "Tier 17"}
+{"t": "gpu status", "i": "get_gpu_status", "s": "typed", "n": "Tier 17"}
+{"t": "what's my ip", "i": "get_local_ip", "s": "typed", "n": "Tier 17"}
+{"t": "system uptime", "i": "get_uptime", "s": "typed", "n": "Tier 17"}
+{"t": "list services", "i": "list_services", "s": "typed", "n": "Tier 17"}
+{"t": "what windows are open", "i": "list_open_windows", "s": "typed", "n": "Tier 17"}
+{"t": "list my skills", "i": "list_my_skills", "s": "typed", "n": "Tier 17"}
+{"t": "run a self check", "i": "run_self_diagnostics", "s": "typed", "n": "Tier 17"}
+{"t": "give me my briefing", "i": "daily_briefing", "s": "typed", "n": "Tier 17"}
+{"t": "take a photo", "i": "take_photo", "s": "typed", "n": "Tier 17"}
+{"t": "list my reminders", "i": "list_reminders", "s": "typed", "n": "Tier 17"}
+{"t": "list my timers", "i": "list_timers", "s": "typed", "n": "Tier 17"}
+{"t": "list my workflows", "i": "list_workflows", "s": "typed", "n": "Tier 17"}
+{"t": "lap the stopwatch", "i": "lap_stopwatch", "s": "typed", "n": "Tier 17"}
+{"t": "start the stopwatch", "i": "start_stopwatch", "s": "typed", "n": "Tier 17"}
+{"t": "stop the stopwatch", "i": "stop_stopwatch", "s": "typed", "n": "Tier 17"}
+{"t": "stopwatch status", "i": "stopwatch_status", "s": "typed", "n": "Tier 17"}
+{"t": "what are my notes", "i": "read_notes", "s": "typed", "n": "Tier 17"}
+{"t": "clear all my notes", "i": "clear_notes", "s": "typed", "n": "Tier 17"}
+{"t": "reindex my notes", "i": "reindex_notes", "s": "typed", "n": "Tier 17"}
+{"t": "turn off study mode", "i": "disable_mode", "s": "typed", "n": "Tier 17"}
+{"t": "what mode am i in", "i": "get_active_mode", "s": "typed", "n": "Tier 17"}
+{"t": "what's the weather", "i": "get_weather", "s": "typed", "n": "Tier 17: _exact only - see intent_router.py comment"}
+{"t": "what's the news", "i": "get_news", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "what's on my calendar", "i": "list_calendar_events", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "list recent actions", "i": "list_recent_actions", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "what's on my to-do list", "i": "list_todos", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "top processes", "i": "get_top_processes", "s": "typed", "n": "Tier 17: NOTE - rule phrase check below"}
+{"t": "what's my streak", "i": "get_streak_status", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "cancel the timer", "i": "cancel_timer", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "check the timer", "i": "check_timer", "s": "typed", "n": "Tier 17: _exact only"}
+{"t": "enable dnd", "i": "enable_mode", "s": "typed", "n": "Tier 17", "a": {"name": "dnd"}}
+{"t": "turn on study mode", "i": "enable_mode", "s": "typed", "n": "Tier 17", "a": {"name": "study"}}
+{"t": "gaming mode on", "i": "enable_mode", "s": "typed", "n": "Tier 17", "a": {"name": "gaming"}}
+{"t": "play shape of you on spotify", "i": "play_on_spotify", "s": "typed", "n": "Tier 17", "a": {"query": "shape of you"}}
+{"t": "quiz me on photosynthesis", "i": "quiz_me_on", "s": "typed", "n": "Tier 17", "a": {"topic": "photosynthesis"}}
+{"t": "summarize my notes on the johnson project", "i": "summarize_my_notes", "s": "typed", "n": "Tier 17", "a": {"topic": "the johnson project"}}
+{"t": "restart chrome", "i": "restart_app", "s": "typed", "n": "Tier 17", "a": {"app_name": "chrome"}}
+{"t": "start the bluetooth service", "i": "start_service", "s": "typed", "n": "Tier 17", "a": {"service_name": "bluetooth"}}
+{"t": "stop the print spooler service", "i": "stop_service", "s": "typed", "n": "Tier 17", "a": {"service_name": "print spooler"}}
+{"t": "search for file budget.xlsx", "i": "search_file", "s": "typed", "n": "Tier 17", "a": {"file_name": "budget.xlsx"}}
+{"t": "create a file called notes.txt", "i": "create_file", "s": "typed", "n": "Tier 17", "a": {"file_name": "notes.txt"}}
+{"t": "delete report.txt", "i": "delete_file", "s": "typed", "n": "Tier 17", "a": {"file_name": "report.txt"}}
+{"t": "recall my wifi password", "i": "recall_memory", "s": "typed", "n": "Tier 17", "a": {"key": "wifi password"}}
+{"t": "forget my old address", "i": "forget_memory", "s": "typed", "n": "Tier 17", "a": {"key": "old address"}}
+{"t": "reset my meditation streak", "i": "reset_streak", "s": "typed", "n": "Tier 17", "a": {"habit": "meditation"}}
+{"t": "run workflow morning setup", "i": "run_workflow", "s": "typed", "n": "Tier 17", "a": {"name": "morning setup"}}
+{"t": "mark buy milk as done", "i": "complete_todo", "s": "typed", "n": "Tier 17", "a": {"query": "buy milk"}}
+{"t": "delete buy milk todo", "i": "delete_todo", "s": "typed", "n": "Tier 17", "a": {"query": "buy milk"}}
+{"t": "cancel the oven reminder", "i": "cancel_reminder", "s": "typed", "n": "Tier 17", "a": {"query": "oven"}}
+{"t": "cancel the dentist appointment", "i": "cancel_calendar_event", "s": "typed", "n": "Tier 17", "a": {"query": "dentist"}}
+{"t": "take a note: buy milk", "i": "take_note", "s": "typed", "n": "Tier 17", "a": {"content": "buy milk"}}
+{"t": "type hello world", "i": "type_text", "s": "typed", "n": "Tier 17 (moved - see note in file)", "a": {"text": "hello world"}}
+{"t": "summarize https://example.com/article", "i": "summarize_page", "s": "typed", "n": "Tier 17", "a": {"url": "https://example.com/article"}}
+{"t": "search my notes for the johnson project", "i": "search_my_notes", "s": "typed", "n": "Tier 17", "a": {"question": "the johnson project"}}
+{"t": "focus on chrome", "i": "focus_window", "s": "typed", "n": "Tier 17", "a": {"window_name": "chrome"}}
+{"t": "maximize chrome", "i": "maximize_window", "s": "typed", "n": "Tier 17", "a": {"window_name": "chrome"}}
+{"t": "minimize chrome", "i": "minimize_window", "s": "typed", "n": "Tier 17", "a": {"window_name": "chrome"}}
+{"t": "restore chrome", "i": "restore_window", "s": "typed", "n": "Tier 17", "a": {"window_name": "chrome"}}
+{"t": "fullscreen chrome", "i": "set_fullscreen", "s": "typed", "n": "Tier 17", "a": {"window_name": "chrome"}}
+{"t": "set the clipboard to hello", "i": "set_clipboard", "s": "typed", "n": "Tier 17 (moved - see note in file)", "a": {"text": "hello"}}
+{"t": "calculate 2 plus 2", "i": "calculate", "s": "typed", "n": "Tier 17", "a": {"expression": "2 plus 2"}}
+{"t": "set the volume to 50", "i": "set_volume", "s": "typed", "n": "Tier 17", "a": {"percent": 50}}
+{"t": "set the brightness to 30", "i": "set_brightness", "s": "typed", "n": "Tier 17", "a": {"percent": 30}}
+{"t": "open discord", "i": "open_app", "s": "typed", "a": {"app_name": "discord"}}
+{"t": "launch spotify", "i": "open_app", "s": "typed", "a": {"app_name": "spotify"}}
+{"t": "launch vs code", "i": "open_app", "s": "typed", "a": {"app_name": "vs code"}}
+{"t": "open file explorer", "i": "open_app", "s": "typed", "a": {"app_name": "file explorer"}}
+{"t": "launch microsoft word", "i": "open_app", "s": "typed", "a": {"app_name": "microsoft word"}}
+{"t": "open excel", "i": "open_app", "s": "typed", "a": {"app_name": "excel"}}
+{"t": "launch outlook", "i": "open_app", "s": "typed", "a": {"app_name": "outlook"}}
+{"t": "open slack", "i": "open_app", "s": "typed", "a": {"app_name": "slack"}}
+{"t": "launch zoom", "i": "open_app", "s": "typed", "a": {"app_name": "zoom"}}
+{"t": "open steam", "i": "open_app", "s": "typed", "a": {"app_name": "steam"}}
+{"t": "open obs", "i": "open_app", "s": "typed", "a": {"app_name": "obs"}}
+{"t": "open firefox", "i": "open_app", "s": "typed", "a": {"app_name": "firefox"}}
+{"t": "open microsoft edge", "i": "open_app", "s": "typed", "a": {"app_name": "microsoft edge"}}
+{"t": "kill discord", "i": "close_app", "s": "typed", "a": {"app_name": "discord"}}
+{"t": "close file explorer", "i": "close_app", "s": "typed", "a": {"app_name": "file explorer"}}
+{"t": "kill spotify", "i": "close_app", "s": "typed", "a": {"app_name": "spotify"}}
+{"t": "close task manager", "i": "close_app", "s": "typed", "a": {"app_name": "task manager"}}
+{"t": "kill steam", "i": "close_app", "s": "typed", "a": {"app_name": "steam"}}
+{"t": "restart spotify", "i": "restart_app", "s": "typed", "a": {"app_name": "spotify"}}
+{"t": "restart discord", "i": "restart_app", "s": "typed", "a": {"app_name": "discord"}}
+{"t": "restart outlook", "i": "restart_app", "s": "typed", "a": {"app_name": "outlook"}}
+{"t": "switch to discord", "i": "focus_window", "s": "typed", "a": {"window_name": "discord"}}
+{"t": "switch to spotify", "i": "focus_window", "s": "typed", "a": {"window_name": "spotify"}}
+{"t": "switch to vs code", "i": "focus_window", "s": "typed", "a": {"window_name": "vs code"}}
+{"t": "minimize discord", "i": "minimize_window", "s": "typed", "a": {"window_name": "discord"}}
+{"t": "minimize spotify", "i": "minimize_window", "s": "typed", "a": {"window_name": "spotify"}}
+{"t": "fullscreen spotify", "i": "set_fullscreen", "s": "typed", "a": {"window_name": "spotify"}}
+{"t": "spotify fullscreen", "i": "set_fullscreen", "s": "typed", "a": {"window_name": "spotify"}}
+{"t": "discord fullscreen", "i": "set_fullscreen", "s": "typed", "a": {"window_name": "discord"}}
+{"t": "set the volume to 20", "i": "set_volume", "s": "typed", "a": {"percent": 20}}
+{"t": "set the volume to 45", "i": "set_volume", "s": "typed", "a": {"percent": 45}}
+{"t": "set the volume to 65", "i": "set_volume", "s": "typed", "a": {"percent": 65}}
+{"t": "set the volume to 90", "i": "set_volume", "s": "typed", "a": {"percent": 90}}
+{"t": "volume 15 percent", "i": "set_volume", "s": "typed", "a": {"percent": 15}}
+{"t": "volume 55 percent", "i": "set_volume", "s": "typed", "a": {"percent": 55}}
+{"t": "volume 85 percent", "i": "set_volume", "s": "typed", "a": {"percent": 85}}
+{"t": "set the brightness to 10", "i": "set_brightness", "s": "typed", "a": {"percent": 10}}
+{"t": "set the brightness to 40", "i": "set_brightness", "s": "typed", "a": {"percent": 40}}
+{"t": "set the brightness to 60", "i": "set_brightness", "s": "typed", "a": {"percent": 60}}
+{"t": "set the brightness to 95", "i": "set_brightness", "s": "typed", "a": {"percent": 95}}
+{"t": "brightness 25 percent", "i": "set_brightness", "s": "typed", "a": {"percent": 25}}
+{"t": "brightness 75 percent", "i": "set_brightness", "s": "typed", "a": {"percent": 75}}
+{"t": "enable focus mode", "i": "enable_mode", "s": "typed", "a": {"name": "focus"}}
+{"t": "turn on sleep mode", "i": "enable_mode", "s": "typed", "a": {"name": "sleep"}}
+{"t": "enable gaming mode", "i": "enable_mode", "s": "typed", "a": {"name": "gaming"}}
+{"t": "enable study mode", "i": "enable_mode", "s": "typed", "a": {"name": "study"}}
+{"t": "focus mode on", "i": "enable_mode", "s": "typed", "a": {"name": "focus"}}
+{"t": "dnd mode on", "i": "enable_mode", "s": "typed", "a": {"name": "dnd"}}
+{"t": "sleep mode on", "i": "enable_mode", "s": "typed", "a": {"name": "sleep"}}
+{"t": "turn on dnd mode", "i": "enable_mode", "s": "typed", "a": {"name": "dnd"}}
+{"t": "turn on gaming mode", "i": "enable_mode", "s": "typed", "a": {"name": "gaming"}}
+{"t": "start the update service", "i": "start_service", "s": "typed", "a": {"service_name": "update"}}
+{"t": "stop the backup service", "i": "stop_service", "s": "typed", "a": {"service_name": "backup"}}
+{"t": "start service indexing", "i": "start_service", "s": "typed", "a": {"service_name": "indexing"}}
+{"t": "stop the firewall service", "i": "stop_service", "s": "typed", "a": {"service_name": "firewall"}}
+{"t": "start the print spooler service", "i": "start_service", "s": "typed", "a": {"service_name": "print spooler"}}
+{"t": "mark walk the dog as done", "i": "complete_todo", "s": "typed", "a": {"query": "walk the dog"}}
+{"t": "complete the todo call mom", "i": "complete_todo", "s": "typed", "a": {"query": "call mom"}}
+{"t": "delete call mom todo", "i": "delete_todo", "s": "typed", "a": {"query": "call mom"}}
+{"t": "remove the laundry to-do", "i": "delete_todo", "s": "typed", "a": {"query": "the laundry"}}
+{"t": "mark finish the report as done", "i": "complete_todo", "s": "typed", "a": {"query": "finish the report"}}
+{"t": "cancel the dentist reminder", "i": "cancel_reminder", "s": "typed", "a": {"query": "dentist"}}
+{"t": "cancel the meeting appointment", "i": "cancel_calendar_event", "s": "typed", "a": {"query": "meeting"}}
+{"t": "cancel the doctor reminder", "i": "cancel_reminder", "s": "typed", "a": {"query": "doctor"}}
+{"t": "recall my router password", "i": "recall_memory", "s": "typed", "a": {"key": "router password"}}
+{"t": "forget my bank pin", "i": "forget_memory", "s": "typed", "a": {"key": "bank pin"}}
+{"t": "recall the wifi name", "i": "recall_memory", "s": "typed", "a": {"key": "wifi name"}}
+{"t": "reset my reading streak", "i": "reset_streak", "s": "typed", "a": {"habit": "reading"}}
+{"t": "forget my running streak", "i": "reset_streak", "s": "typed", "a": {"habit": "running"}}
+{"t": "reset my coding streak", "i": "reset_streak", "s": "typed", "a": {"habit": "coding"}}
+{"t": "take a note: pick up laundry", "i": "take_note", "s": "typed", "a": {"content": "pick up laundry"}}
+{"t": "note down that the meeting moved to friday", "i": "take_note", "s": "typed", "a": {"content": "the meeting moved to friday"}}
+{"t": "search my notes for the budget report", "i": "search_my_notes", "s": "typed", "a": {"question": "the budget report"}}
+{"t": "summarize my notes on the budget report", "i": "summarize_my_notes", "s": "typed", "a": {"topic": "the budget report"}}
+{"t": "quiz me on world war two", "i": "quiz_me_on", "s": "typed", "a": {"topic": "world war two"}}
+{"t": "quiz me on the solar system", "i": "quiz_me_on", "s": "typed", "a": {"topic": "the solar system"}}
+{"t": "search for file resume.pdf", "i": "search_file", "s": "typed", "a": {"file_name": "resume.pdf"}}
+{"t": "delete old_report.docx", "i": "delete_file", "s": "typed", "a": {"file_name": "old_report.docx"}}
+{"t": "search for file notes.txt", "i": "search_file", "s": "typed", "a": {"file_name": "notes.txt"}}
+{"t": "search for italian recipes", "i": "search_google", "s": "typed", "a": {"query": "italian recipes"}}
+{"t": "search for guitar tutorials on youtube", "i": "play_youtube", "s": "typed", "a": {"query": "guitar tutorials"}}
+{"t": "play bohemian rhapsody", "i": "play_youtube", "s": "typed", "a": {"query": "bohemian rhapsody"}}
+{"t": "play bohemian rhapsody on spotify", "i": "play_on_spotify", "s": "typed", "a": {"query": "bohemian rhapsody"}}
+{"t": "play imagine dragons on spotify", "i": "play_on_spotify", "s": "typed", "a": {"query": "imagine dragons"}}
+{"t": "calculate 15 times 3", "i": "calculate", "s": "typed", "a": {"expression": "15 times 3"}}
+{"t": "calculate 100 divided by 4", "i": "calculate", "s": "typed", "a": {"expression": "100 divided by 4"}}
+{"t": "calculate 9 squared", "i": "calculate", "s": "typed", "a": {"expression": "9 squared"}}
+{"t": "summarize https://news.example.com/story", "i": "summarize_page", "s": "typed", "a": {"url": "https://news.example.com/story"}}
+{"t": "set the clipboard to see you at 5", "i": "set_clipboard", "s": "typed", "a": {"text": "see you at 5"}}
+{"t": "type good morning everyone", "i": "type_text", "s": "typed", "a": {"text": "good morning everyone"}}
+{"t": "write good morning everyone in notepad", "i": "write_notepad", "s": "typed", "a": {"text": "good morning everyone"}}
+{"t": "what's the weather in tokyo", "i": "chat", "s": "typed", "n": "Tier 17: optional-arg exactness - specific city must defer to the LLM"}
+{"t": "what's the news in sports", "i": "chat", "s": "typed", "n": "Tier 17: optional-arg exactness - specific topic must defer to the LLM"}
+{"t": "list my calendar events for tomorrow", "i": "chat", "s": "typed", "n": "Tier 17: optional-arg exactness - a specific date must defer"}
+{"t": "show me the top 10 processes", "i": "chat", "s": "typed", "n": "Tier 17: optional-arg exactness - a specific count must defer"}
+{"t": "open control panel", "i": "open_control_panel", "s": "typed", "n": "Tier 17 bench growth"}
+{"t": "open task manager", "i": "open_task_manager", "s": "typed", "n": "Tier 17 bench growth"}
+{"t": "open paint", "i": "open_app", "s": "typed", "a": {"app_name": "paint"}}
+{"t": "launch calculator", "i": "open_app", "s": "typed", "a": {"app_name": "calculator"}}
+{"t": "open teams", "i": "open_app", "s": "typed", "a": {"app_name": "teams"}}
+{"t": "launch skype", "i": "open_app", "s": "typed", "a": {"app_name": "skype"}}
+{"t": "open whatsapp", "i": "open_app", "s": "typed", "a": {"app_name": "whatsapp"}}
+{"t": "open telegram", "i": "open_app", "s": "typed", "a": {"app_name": "telegram"}}
+{"t": "kill teams", "i": "close_app", "s": "typed", "a": {"app_name": "teams"}}
+{"t": "close whatsapp", "i": "close_app", "s": "typed", "a": {"app_name": "whatsapp"}}
+{"t": "restart teams", "i": "restart_app", "s": "typed", "a": {"app_name": "teams"}}
+{"t": "switch to whatsapp", "i": "focus_window", "s": "typed", "a": {"window_name": "whatsapp"}}
+{"t": "minimize teams", "i": "minimize_window", "s": "typed", "a": {"window_name": "teams"}}
+{"t": "mark buy groceries as done", "i": "complete_todo", "s": "typed", "a": {"query": "buy groceries"}}
+{"t": "complete the todo pay rent", "i": "complete_todo", "s": "typed", "a": {"query": "pay rent"}}
+{"t": "delete pay rent todo", "i": "delete_todo", "s": "typed", "a": {"query": "pay rent"}}
+{"t": "remove the gym to-do", "i": "delete_todo", "s": "typed", "a": {"query": "the gym"}}
+{"t": "cancel the gym reminder", "i": "cancel_reminder", "s": "typed", "a": {"query": "gym"}}
+{"t": "cancel the flight appointment", "i": "cancel_calendar_event", "s": "typed", "a": {"query": "flight"}}
+{"t": "recall my email password", "i": "recall_memory", "s": "typed", "a": {"key": "email password"}}
+{"t": "forget my netflix password", "i": "forget_memory", "s": "typed", "a": {"key": "netflix password"}}
+{"t": "recall my locker combination", "i": "recall_memory", "s": "typed", "a": {"key": "locker combination"}}
+{"t": "reset my yoga streak", "i": "reset_streak", "s": "typed", "a": {"habit": "yoga"}}
+{"t": "forget my cycling streak", "i": "reset_streak", "s": "typed", "a": {"habit": "cycling"}}
+{"t": "take a note: call the plumber", "i": "take_note", "s": "typed", "a": {"content": "call the plumber"}}
+{"t": "note down that the flight leaves at 6am", "i": "take_note", "s": "typed", "a": {"content": "the flight leaves at 6am"}}
+{"t": "search my notes for the vacation plan", "i": "search_my_notes", "s": "typed", "a": {"question": "the vacation plan"}}
+{"t": "summarize my notes on the vacation plan", "i": "summarize_my_notes", "s": "typed", "a": {"topic": "the vacation plan"}}
+{"t": "quiz me on the french revolution", "i": "quiz_me_on", "s": "typed", "a": {"topic": "the french revolution"}}
+{"t": "quiz me on javascript basics", "i": "quiz_me_on", "s": "typed", "a": {"topic": "javascript basics"}}
+{"t": "search for file invoice.pdf", "i": "search_file", "s": "typed", "a": {"file_name": "invoice.pdf"}}
+{"t": "delete temp.log", "i": "delete_file", "s": "typed", "a": {"file_name": "temp.log"}}
+{"t": "search for file project_plan.docx", "i": "search_file", "s": "typed", "a": {"file_name": "project_plan.docx"}}
+{"t": "search for yoga tutorials", "i": "search_google", "s": "typed", "a": {"query": "yoga tutorials"}}
+{"t": "search for piano tutorials on youtube", "i": "play_youtube", "s": "typed", "a": {"query": "piano tutorials"}}
+{"t": "play stairway to heaven", "i": "play_youtube", "s": "typed", "a": {"query": "stairway to heaven"}}
+{"t": "play stairway to heaven on spotify", "i": "play_on_spotify", "s": "typed", "a": {"query": "stairway to heaven"}}
+{"t": "play hotel california on spotify", "i": "play_on_spotify", "s": "typed", "a": {"query": "hotel california"}}
+{"t": "calculate 50 minus 12", "i": "calculate", "s": "typed", "a": {"expression": "50 minus 12"}}
+{"t": "calculate 7 times 8", "i": "calculate", "s": "typed", "a": {"expression": "7 times 8"}}
+{"t": "calculate 144 divided by 12", "i": "calculate", "s": "typed", "a": {"expression": "144 divided by 12"}}
+{"t": "set the volume to 5", "i": "set_volume", "s": "typed", "a": {"percent": 5}}
+{"t": "set the volume to 12", "i": "set_volume", "s": "typed", "a": {"percent": 12}}
+{"t": "set the volume to 33", "i": "set_volume", "s": "typed", "a": {"percent": 33}}
+{"t": "volume 42 percent", "i": "set_volume", "s": "typed", "a": {"percent": 42}}
+{"t": "volume 68 percent", "i": "set_volume", "s": "typed", "a": {"percent": 68}}
+{"t": "volume 98 percent", "i": "set_volume", "s": "typed", "a": {"percent": 98}}
+{"t": "set the brightness to 18", "i": "set_brightness", "s": "typed", "a": {"percent": 18}}
+{"t": "set the brightness to 22", "i": "set_brightness", "s": "typed", "a": {"percent": 22}}
+{"t": "set the brightness to 72", "i": "set_brightness", "s": "typed", "a": {"percent": 72}}
+{"t": "brightness 58 percent", "i": "set_brightness", "s": "typed", "a": {"percent": 58}}
+{"t": "brightness 88 percent", "i": "set_brightness", "s": "typed", "a": {"percent": 88}}
+{"t": "enable sleep mode", "i": "enable_mode", "s": "typed", "a": {"name": "sleep"}}
+{"t": "enable focus mode", "i": "enable_mode", "s": "typed", "a": {"name": "focus"}}
+{"t": "start the audio service", "i": "start_service", "s": "typed", "a": {"service_name": "audio"}}
+{"t": "stop the search service", "i": "stop_service", "s": "typed", "a": {"service_name": "search"}}
+{"t": "start service scheduler", "i": "start_service", "s": "typed", "a": {"service_name": "scheduler"}}
+{"t": "stop the sync service", "i": "stop_service", "s": "typed", "a": {"service_name": "sync"}}
+{"t": "summarize https://blog.example.com/post", "i": "summarize_page", "s": "typed", "a": {"url": "https://blog.example.com/post"}}
+{"t": "summarize http://example.org/page", "i": "summarize_page", "s": "typed", "a": {"url": "http://example.org/page"}}
+{"t": "set the clipboard to see you tomorrow", "i": "set_clipboard", "s": "typed", "a": {"text": "see you tomorrow"}}
+{"t": "type the quarterly report is ready", "i": "type_text", "s": "typed", "a": {"text": "the quarterly report is ready"}}

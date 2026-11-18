@@ -1,0 +1,100 @@
+{"_defaults": {"l": "hi"}}
+{"t": "आवाज़ बढ़ाओ", "i": "volume_up", "n": "Tier 8: Devanagari gap closed - volume_up's contains_phrases now include this literal phrase alongside the pre-existing romanized 'awaaz badhao'."}
+{"t": "आवाज़ कम करो", "i": "volume_down", "n": "Tier 8: same fix as above, for volume_down."}
+{"t": "म्यूट करो", "i": "mute_volume", "n": "Tier 14: toggle_mute retired, replaced by mute_volume/unmute_volume - this phrase moved to mute_volume's own contains_phrases list."}
+{"t": "कंप्यूटर लॉक करो", "i": "lock_pc", "n": "Tier 8: same fix, for lock_pc."}
+{"t": "स्क्रीनशॉट लो", "i": "take_screenshot", "n": "Tier 8: same fix, for take_screenshot."}
+{"t": "पिछला गाना", "i": "media_previous_track", "n": "Tier 8: media_previous_track had zero phrase in ANY script before this - added both this Devanagari phrase and a romanized 'pichla gaana' variant."}
+{"t": "यह पूर्ववत करो", "i": "undo_last_action", "n": "Tier 8: added as a new exact-match phrase alongside the existing romanized ones (undo is an _exact rule, not _contains)."}
+{"t": "क्रोम खोलो", "i": "open_app", "a": {"app_name": "क्रोम"}, "n": "Tier 8: open_app now also matches verb-FINAL phrasing via the new _suffix_arg matcher (' खोलो' as a suffix), not just the English verb-first 'open '/'start '/'launch ' prefixes - see _prefix_or_suffix_arg in brain/intent_router.py."}
+{"t": "नोटपैड बंद करो", "i": "close_app", "a": {"app_name": "नोटपैड"}, "n": "Tier 8: same verb-final fix as open_app above, for close_app (' बंद करो' as a suffix) - this is also the Devanagari half of the same gap intents_hinglish.jsonl's 'notepad band karo' row documents for the romanized side."}
+{"t": "मुझे कल सुबह याद दिलाना डॉक्टर के पास जाना है", "i": "chat", "n": "still out of scope - reminders have no intent_router rule at all, in any script. Not touched in Tier 8; see Readme.MD."}
+{"t": "आज जयपुर में मौसम कैसा है", "i": "chat", "n": "still out of scope - weather has no intent_router rule at all, in any script. Not touched in Tier 8; see Readme.MD."}
+{"t": "पीसी लॉक मत करो", "i": "chat", "n": "Tier 8: correctly 'chat', for two independent reasons now that lock_pc has Devanagari coverage - (1) the phrase added for lock_pc is the verb-phrase 'कंप्यूटर लॉक करो'/'पीसी लॉक करो' (ending in करो), which never appears as a contiguous substring once 'मत' is inserted before करो, so it simply doesn't match in the first place; (2) even if some future lock phrase did match as a plain substring, _has_standalone_negator() now catches standalone 'मत' as its own word regardless of position (leading or trailing) and defers to the LLM anyway. Belt and suspenders, deliberately - see that function's own docstring in brain/intent_router.py."}
+{"t": "सेटिंग्स खोलो", "i": "open_system_setting", "a": {"setting": "settings"}, "n": "Tier 11"}
+{"t": "नोटपैड में दूध लाना लिखो", "i": "write_notepad", "a": {"text": "दूध लाना"}, "n": "Tier 11"}
+{"t": "ब्लूटूथ बंद करो", "i": "toggle_hardware", "a": {"instruction": "bluetooth बंद करो"}, "n": "Tier 11"}
+{"t": "पीसी शटडाउन करो", "i": "shutdown_pc", "n": "Tier 14"}
+{"t": "पीसी रीस्टार्ट करो", "i": "restart_pc", "n": "Tier 14"}
+{"t": "पीसी को सुलाओ", "i": "sleep_pc", "n": "Tier 14"}
+{"t": "पीसी हाइबरनेट करो", "i": "hibernate_pc", "n": "Tier 14"}
+{"t": "लॉग ऑफ करो", "i": "log_off", "n": "Tier 14"}
+{"t": "शटडाउन कैंसिल करो", "i": "cancel_shutdown", "n": "Tier 14"}
+{"t": "डेस्कटॉप दिखाओ", "i": "show_desktop", "n": "Tier 14"}
+{"t": "विंडो बदलो", "i": "switch_window", "n": "Tier 14"}
+{"t": "इसे कॉपी करो", "i": "copy_text", "n": "Tier 15: Devanagari"}
+{"t": "इसे पेस्ट करो", "i": "paste_text", "n": "Tier 15"}
+{"t": "सब सेलेक्ट करो", "i": "select_all_text", "n": "Tier 15"}
+{"t": "नया टैब खोलो", "i": "new_tab", "n": "Tier 15"}
+{"t": "अगला टैब", "i": "next_tab", "n": "Tier 15"}
+{"t": "पिछला टैब", "i": "previous_tab", "n": "Tier 15"}
+{"t": "पेज रीलोड करो", "i": "reload_page", "n": "Tier 15"}
+{"t": "ज़ूम इन करो", "i": "zoom_in", "n": "Tier 15"}
+{"t": "ज़ूम आउट करो", "i": "zoom_out", "n": "Tier 15"}
+{"t": "ज़ूम रीसेट करो", "i": "zoom_reset", "n": "Tier 15"}
+{"t": "ऊपर स्क्रॉल करो", "i": "scroll_up", "n": "Tier 15"}
+{"t": "नीचे स्क्रॉल करो", "i": "scroll_down", "n": "Tier 15"}
+{"t": "डाउनलोड्स खोलो", "i": "open_downloads", "n": "Tier 15"}
+{"t": "डॉक्यूमेंट्स खोलो", "i": "open_documents", "n": "Tier 15"}
+{"t": "रीसायकल बिन खोलो", "i": "open_recycle_bin", "n": "Tier 15"}
+{"t": "टास्क मैनेजर खोलो", "i": "open_task_manager", "n": "Tier 15"}
+{"t": "कंट्रोल पैनल खोलो", "i": "open_control_panel", "n": "Tier 15"}
+{"t": "रीसायकल बिन खाली करो", "i": "empty_recycle_bin", "n": "Tier 15: T3/confirm-gated, same as cancel_shutdown's Devanagari rows above"}
+{"t": "क्या समय हुआ है", "i": "get_current_time", "n": "Tier 16: Devanagari"}
+{"t": "आज की तारीख क्या है", "i": "get_current_date", "n": "Tier 16: Devanagari"}
+{"t": "आज कौन सा दिन है", "i": "get_current_date"}
+{"t": "आज की तारीख क्या है", "i": "get_current_date"}
+{"t": "अभी कितने बजे हैं", "i": "get_current_time"}
+{"t": "क्या समय हुआ है", "i": "get_current_time"}
+{"t": "नोटपैड बंद करो", "i": "close_app", "a": {"app_name": "नोटपैड"}}
+{"t": "अगला टैब", "i": "next_tab"}
+{"t": "पिछला टैब", "i": "previous_tab"}
+{"t": "नया टैब खोलो", "i": "new_tab"}
+{"t": "पेज रीलोड करो", "i": "reload_page"}
+{"t": "ज़ूम इन करो", "i": "zoom_in"}
+{"t": "ज़ूम आउट करो", "i": "zoom_out"}
+{"t": "ज़ूम रीसेट करो", "i": "zoom_reset"}
+{"t": "ऊपर स्क्रॉल करो", "i": "scroll_up"}
+{"t": "नीचे स्क्रॉल करो", "i": "scroll_down"}
+{"t": "पूर्ववत करो", "i": "undo_last_action"}
+{"t": "यह पूर्ववत करो", "i": "undo_last_action"}
+{"t": "स्क्रीनशॉट ले लो", "i": "take_screenshot"}
+{"t": "रीसायकल बिन खोलो", "i": "open_recycle_bin"}
+{"t": "रीसायकल बिन खाली करो", "i": "empty_recycle_bin"}
+{"t": "डेस्कटॉप दिखाओ", "i": "show_desktop"}
+{"t": "विंडो बदलो", "i": "switch_window"}
+{"t": "पीसी को सुलाओ", "i": "sleep_pc"}
+{"t": "पीसी स्लीप करो", "i": "sleep_pc"}
+{"t": "पीसी हाइबरनेट करो", "i": "hibernate_pc"}
+{"t": "पीसी रीस्टार्ट करो", "i": "restart_pc"}
+{"t": "पीसी शटडाउन करो", "i": "shutdown_pc"}
+{"t": "कंप्यूटर रीस्टार्ट करो", "i": "restart_pc"}
+{"t": "कंप्यूटर शटडाउन करो", "i": "shutdown_pc"}
+{"t": "लॉग ऑफ करो", "i": "log_off"}
+{"t": "शटडाउन कैंसिल करो", "i": "cancel_shutdown"}
+{"t": "शटडाउन रद्द करो", "i": "cancel_shutdown"}
+{"t": "स्क्रीन लॉक करो", "i": "lock_pc"}
+{"t": "बैटरी कितनी है", "i": "get_battery_status"}
+{"t": "मौसम कैसा है", "i": "get_weather"}
+{"t": "वॉल्यूम बढ़ाओ", "i": "volume_up"}
+{"t": "वॉल्यूम कम करो", "i": "volume_down"}
+{"t": "आवाज़ धीरे करो", "i": "volume_down"}
+{"t": "आवाज़ तेज़ करो", "i": "volume_up"}
+{"t": "आवाज़ चालू करो", "i": "unmute_volume"}
+{"t": "आवाज़ बंद करो", "i": "mute_volume"}
+{"t": "अनम्यूट करो", "i": "unmute_volume"}
+{"t": "ब्राइटनेस बढ़ाओ", "i": "brightness_up"}
+{"t": "ब्राइटनेस कम करो", "i": "brightness_down"}
+{"t": "टास्क मैनेजर खोलो", "i": "open_task_manager"}
+{"t": "कंट्रोल पैनल खोलो", "i": "open_control_panel"}
+{"t": "डाउनलोड्स खोलो", "i": "open_downloads"}
+{"t": "डॉक्यूमेंट्स खोलो", "i": "open_documents"}
+{"t": "सब सेलेक्ट करो", "i": "select_all_text"}
+{"t": "इसे कॉपी करो", "i": "copy_text"}
+{"t": "इसे पेस्ट करो", "i": "paste_text"}
+{"t": "पिछला गाना", "i": "media_previous_track"}
+{"t": "पिछला ट्रैक", "i": "media_previous_track"}
+{"t": "आवाज़ पूरी करो", "i": "volume_max"}
+{"t": "पेंट खोलो", "i": "open_app", "a": {"app_name": "पेंट"}}
+{"t": "कैलकुलेटर खोलो", "i": "open_app", "a": {"app_name": "कैलकुलेटर"}}
+{"t": "टेलीग्राम खोलो", "i": "open_app", "a": {"app_name": "टेलीग्राम"}}
