@@ -2,6 +2,7 @@ import asyncio
 import collections
 import concurrent.futures
 import hashlib
+import importlib.util
 import itertools
 import logging
 import os
@@ -27,6 +28,7 @@ from voice.tts_cache import phrase_cache
 # voice/stt.py's own import of the same module for the full explanation.
 import voice.language as language
 import voice.text_prep as text_prep
+from voice.clone_client import CloneProcessError, CloneVoiceProcess
 
 logger = logging.getLogger("TTS")
 
@@ -135,17 +137,13 @@ except ImportError:
 # TTS_CLONE_* block for the full reasoning, and why there's no separate
 # auto-download consent flag the way Piper/Kokoro each have one.
 #
-# Imported as `from TTS.api import TTS` - the package's own PyPI name is
-# `coqui-tts` (the original `TTS` package is unmaintained; `coqui-tts` is
-# its actively-maintained fork, same import path) so this works against
-# either one without caring which is actually installed.
-try:
-    from TTS.api import TTS as CoquiTTS
-
-    HAS_COQUI_TTS = True
-except ImportError:
-    CoquiTTS = None
-    HAS_COQUI_TTS = False
+# The package's own PyPI name is `coqui-tts` (the original `TTS` package is
+# unmaintained; `coqui-tts` is its actively-maintained fork, same import
+# path). Tier 31: it is imported only inside the voice-clone process
+# (voice/clone_worker.py -> voice/clone_xtts.py), never in Wave's own -
+# here it's enough to know it's installed, which also keeps torch out of
+# Wave's process. See voice/clone_worker.py for why XTTS must not run here.
+HAS_COQUI_TTS = importlib.util.find_spec("TTS") is not None
 
 # Tier 2: sentence-boundary splitter for speak_stream() - same approach
 # _speak_via_sapi already uses below (a period/question mark/exclamation
@@ -298,6 +296,33 @@ def clean_for_speech(text: str) -> str:
     return text.strip()
 
 
+class _SerialWorker:
+    """Tier 31: one daemon thread that runs submitted calls in order and
+    hands back concurrent.futures.Future objects - a one-thread
+    ThreadPoolExecutor, except that Python doesn't wait for it when Wave
+    quits (a voice-clone process start can take minutes, a sentence many
+    seconds; the process itself exits when Wave does)."""
+
+    def __init__(self, name: str):
+        self._jobs = queue.Queue()
+        threading.Thread(target=self._run, name=name, daemon=True).start()
+
+    def submit(self, fn, *args):
+        future = concurrent.futures.Future()
+        self._jobs.put((future, fn, args))
+        return future
+
+    def _run(self):
+        while True:
+            future, fn, args = self._jobs.get()
+            if not future.set_running_or_notify_cancel():
+                continue   # cancelled by stop() while it was still queued
+            try:
+                future.set_result(fn(*args))
+            except BaseException as e:  # noqa: BLE001 - handed to whoever waits on it
+                future.set_exception(e)
+
+
 class VoiceEngine:
     """TTS engine using Microsoft Edge's free online neural voices (edge-tts)
     for natural, human-sounding speech - a big step up from the robotic
@@ -437,6 +462,15 @@ class VoiceEngine:
         # deliberate opt-in (see settings/config.py's TTS_CLONE_* docstring).
         self._clone_engine = None
         self._clone_load_failed = False
+        # Tier 31: XTTS-v2 runs in a process of its own (voice/clone_client.py
+        # / clone_worker.py); _clone_engine is that process once it's up. One
+        # worker thread here hands it the sentences in order, ahead of
+        # playback - see _clone_take(). _clone_lock stops two threads starting
+        # it; _clone_warm is the start-up already under way, if any.
+        self._clone_lock = threading.Lock()
+        self._clone_pool = None
+        self._clone_futures = {}
+        self._clone_warm = None
 
         # Tier 12: one output stream kept open across utterances - see
         # _persistent_output() and voice/audio_out.py.
@@ -722,14 +756,17 @@ class VoiceEngine:
         phrase cache already holds it, or when TTS_PREFETCH_ENABLED=false."""
         if not text or not getattr(config, "TTS_PREFETCH_ENABLED", True):
             return False
-        if getattr(config, "TTS_PREFER_LOCAL_VOICE", False):
-            return False
         # Tier 25: no point prefetching an edge-tts network round-trip that
         # _run_utterance() is about to throw away unused - _speak_via_clone()
         # is tried before anything else once a voice reference is set up.
-        # The cheap check, not _get_clone_engine() - this must never trigger
-        # the (first-call, ~1.8GB) model load itself.
-        if self._clone_reference_ready():
+        # Tier 31: render the cloned voice ahead instead - on a laptop CPU a
+        # sentence takes about twice as long to synthesize as to say, so
+        # without this every sentence of a reply waited for its own
+        # synthesis. Until the clone process is up, the sentence will go out
+        # in the edge-tts voice, so that's what gets prefetched.
+        if self._clone_engine_if_ready() is not None:
+            return self._prefetch_clone(text)
+        if getattr(config, "TTS_PREFER_LOCAL_VOICE", False):
             return False
         clean = clean_for_speech(text)
         if not clean:
@@ -796,8 +833,9 @@ class VoiceEngine:
 
     def _cancel_prefetch(self):
         with self._prefetch_lock:
-            futures = list(self._prefetch_futures.values())
+            futures = list(self._prefetch_futures.values()) + list(self._clone_futures.values())
             self._prefetch_futures.clear()
+            self._clone_futures.clear()
         for future in futures:
             future.cancel()   # only stops ones that haven't started; started ones just get discarded
 
@@ -870,6 +908,19 @@ class VoiceEngine:
         except Exception:
             logger.debug("on_playback_pcm listener failed", exc_info=True)
 
+    def _watchdog_seconds(self, text: str) -> float:
+        """How long one utterance may take before _force_reset() steps in:
+        ~0.6s per word (generous for normal speech), at least 20s. A cloned
+        sentence is synthesized before it plays - on a laptop CPU about
+        twice as long as the speech itself - so once the clone process is up
+        it gets that time on top. (Nothing waits for the process to start:
+        until it's up, sentences go out in the edge-tts voice.)"""
+        words = len(text.split())
+        limit = max(20.0, words * 0.6)
+        if self._clone_engine_current(self._clone_engine):
+            limit += words * 1.5
+        return limit
+
     def _force_reset(self):
         """Safety-net watchdog: if playback is ever still 'in progress' far
         longer than the text could possibly take to read out loud (a stuck
@@ -906,7 +957,7 @@ class VoiceEngine:
         mp3_path = None
         # ~0.6s per word is a very generous ceiling for normal speech - this
         # is purely a last-resort backstop, not the normal stopping path.
-        watchdog = threading.Timer(max(20.0, len(text.split()) * 0.6), self._force_reset)
+        watchdog = threading.Timer(self._watchdog_seconds(text), self._force_reset)
         watchdog.daemon = True
         watchdog.start()
         try:
@@ -1716,34 +1767,182 @@ class VoiceEngine:
         reference_path = (getattr(config, "TTS_CLONE_REFERENCE_PATH", "") or "").strip()
         return bool(reference_path) and os.path.exists(reference_path)
 
+    @staticmethod
+    def _clone_engine_current(engine) -> bool:
+        """Is `engine` a running clone process for the voice sample that's
+        configured right now?"""
+        return (engine is not None and getattr(engine, "alive", True)
+                and getattr(engine, "reference_path", None) == getattr(config, "TTS_CLONE_REFERENCE_PATH", ""))
+
     def _get_clone_engine(self):
-        """Lazily loads and caches the Coqui XTTS-v2 engine. Returns None
-        - never raises - if _clone_reference_ready() says there's nothing
-        to load, or the model fails to load, and remembers that failure
-        for the rest of the session - same lazy/cache-the-failure pattern
-        as _get_piper_voice()/_get_kokoro_voice() above. The first real
-        call downloads the ~1.8GB XTTS-v2 checkpoint (Coqui TTS's own
-        cache dir, not this project's) - slow, one-time, and entirely
-        expected; nothing here tries to hide that or put a progress bar
-        on it. Only ever called from _speak_via_clone() - everywhere else
-        that just needs to know "is cloning set up right now" (e.g.
-        prefetch()) uses the cheap check above instead."""
+        """The voice-clone process (voice/clone_client.py), started on first
+        use - BLOCKING: XTTS-v2 takes ~15 s to load (minutes the very first
+        time, when coqui-tts downloads the ~1.8GB checkpoint into its own
+        cache dir). Returns None - never raises - if _clone_reference_ready()
+        says there's nothing to load, or the process fails to start, and
+        remembers that failure for the rest of the session - same
+        lazy/cache-the-failure pattern as _get_piper_voice()/
+        _get_kokoro_voice() above. A process for an older sample, or one
+        that died, is replaced. Only called on the clone worker thread
+        (warm-up and rendering); the speaker thread never waits for it -
+        see _clone_engine_if_ready()."""
         if not self._clone_reference_ready():
             return None
         if self._clone_load_failed:
             return None
-        if self._clone_engine is not None:
+        if self._clone_engine_current(self._clone_engine):
             return self._clone_engine
-        reference_path = getattr(config, "TTS_CLONE_REFERENCE_PATH", "")
-        model_name = getattr(config, "TTS_CLONE_MODEL_NAME",
-                              "tts_models/multilingual/multi-dataset/xtts_v2")
+        with self._clone_lock:
+            if self._clone_load_failed:
+                return None
+            if self._clone_engine_current(self._clone_engine):
+                return self._clone_engine
+            old, self._clone_engine = self._clone_engine, None
+            if old is not None:
+                old.close()
+            reference_path = getattr(config, "TTS_CLONE_REFERENCE_PATH", "")
+            model_name = getattr(config, "TTS_CLONE_MODEL_NAME",
+                                  "tts_models/multilingual/multi-dataset/xtts_v2")
+            started = time.monotonic()
+            try:
+                engine = CloneVoiceProcess(model_name, reference_path,
+                                           device=getattr(config, "TTS_CLONE_DEVICE", "auto"))
+                info = engine.start() or {}
+                self._clone_engine = engine
+                logger.info(f"Voice clone ready from '{reference_path}' on {info.get('device', '?')} "
+                            f"in {time.monotonic() - started:.1f}s (own process; model {info.get('load_s', '?')}s, "
+                            f"voice {info.get('latents_s', '?')}s).")
+                return engine
+            except Exception as e:
+                logger.warning(f"Voice-clone engine load failed, staying on edge-tts/Piper/Kokoro: {e}")
+                self._clone_load_failed = True
+                return None
+
+    def _clone_engine_if_ready(self):
+        """NON-blocking: the clone process if it's up for the current sample,
+        else None - and if cloning is set up but not loaded yet, start
+        loading it in the background, so this utterance goes out in the
+        edge-tts voice instead of waiting ~15 s in silence."""
+        engine = self._clone_engine
+        if self._clone_engine_current(engine):
+            return engine
+        if self._clone_reference_ready() and not self._clone_load_failed:
+            self.warm_up_clone()
+        return None
+
+    def warm_up_clone(self):
+        """Tier 31: starts the voice-clone process (model + the user's voice)
+        in the background as soon as a voice sample is known - both UIs call
+        this at start-up - so the first reply doesn't wait for it. Runs on
+        the clone worker, ahead of any sentence; while one start-up is under
+        way, calling this again returns that one. Returns the future, or
+        None when cloning isn't set up."""
+        if not self._clone_reference_ready() or self._clone_load_failed:
+            return None
+        with self._prefetch_lock:
+            if self._clone_warm is not None and not self._clone_warm.done():
+                return self._clone_warm
+            self._clone_warm = self._clone_pool_locked().submit(self._clone_prepare)
+            return self._clone_warm
+
+    def _clone_prepare(self) -> bool:
+        return self._get_clone_engine() is not None
+
+    def reset_clone(self) -> None:
+        """The voice sample changed ("Build avatar"): stop the old clone
+        process - the next warm-up or utterance starts one for the new
+        sample - and forget an earlier failure to start. Doesn't wait for a
+        start-up that's under way (that can take minutes, and this runs on
+        the UI's thread): a process it brings up for the old sample doesn't
+        count as current and is replaced on first use."""
+        engine, self._clone_engine = self._clone_engine, None
+        self._clone_load_failed = False
+        if engine is not None:
+            engine.close()
+
+    def _clone_pool_locked(self):
+        """The one worker thread every cloned sentence is rendered on, in
+        order. Caller holds _prefetch_lock."""
+        if self._clone_pool is None:
+            self._clone_pool = _SerialWorker("TTS-Clone")
+        return self._clone_pool
+
+    def _prefetch_clone(self, text: str) -> bool:
+        """prefetch() once the clone process is up: queue `text` on the clone
+        worker, so it's ready (or nearly) by the time the sentence before it
+        has finished playing."""
+        clean = clean_for_speech(text)
+        if not clean:
+            return False
+        with self._prefetch_lock:
+            if clean in self._clone_futures:
+                return True
+            if len(self._clone_futures) >= _PREFETCH_MAX_PENDING:
+                return False
+            self._clone_futures[clean] = self._clone_pool_locked().submit(
+                self._clone_render, clean, language.classify(clean), self._interrupt_gen)
+        return True
+
+    def _clone_take(self, text: str, lang: str):
+        """The rendering of `text` - the one prefetch() already started, or
+        a new one queued behind whatever the worker is busy with."""
+        with self._prefetch_lock:
+            future = self._clone_futures.pop(text, None)
+            if future is None or future.cancelled():
+                future = self._clone_pool_locked().submit(self._clone_render, text, lang, self._interrupt_gen)
+        return future
+
+    def _clone_wait(self, future):
+        """Waits for a rendering, but gives up the moment stop() (or the
+        watchdog) fires - the worker's result is simply dropped."""
+        while True:
+            try:
+                return future.result(timeout=0.1)
+            except concurrent.futures.CancelledError:
+                return None
+            except Exception as e:
+                # A TimeoutError from a future that isn't done yet just means
+                # "still rendering"; one the rendering itself raised is a failure.
+                if isinstance(e, concurrent.futures.TimeoutError) and not future.done():
+                    if self.stop_event.is_set():
+                        return None
+                    continue
+                logger.warning(f"Voice-clone synthesis failed, falling back to edge-tts: {e}")
+                return None
+
+    def _clone_render(self, text: str, lang: str, gen: int):
+        """Clone worker: `text` in the user's voice as (int16 pcm, sample
+        rate), or None if it was stopped before starting or failed.
+
+        lang comes from voice/language.py's classify() - XTTS-v2 genuinely
+        supports both "en" and "hi" (unlike Piper/SAPI's fixed English-only
+        voice), so hinglish (romanized Hindi) is the only case mapped to
+        "en" here, same reasoning text_prep.prepare()'s own "en" path
+        already uses for anything that isn't classified Devanagari."""
+        if gen != self._interrupt_gen:
+            return None
+        engine = self._get_clone_engine()
+        if engine is None:
+            return None
+        xtts_lang = "hi" if lang == language.HI else "en"
         try:
-            self._clone_engine = CoquiTTS(model_name)
-            logger.info(f"Loaded Coqui XTTS-v2 for voice cloning from '{reference_path}'.")
-            return self._clone_engine
+            prepared = text_prep.prepare(text, xtts_lang, numbers="all")
+            started = time.monotonic()
+            samples, sample_rate = engine.synthesize(prepared, xtts_lang)
+            if samples is None or len(samples) == 0:
+                return None
+            pcm = np.clip(np.asarray(samples, dtype=np.float32), -1.0, 1.0)
+            # One line per sentence: how far behind real time the clone is
+            # running on this machine (see config.TTS_CLONE_DEVICE).
+            logger.info(f"Voice clone: {len(pcm) / sample_rate:.1f}s of audio "
+                        f"in {time.monotonic() - started:.1f}s")
+            return (pcm * 32767.0).astype(np.int16), int(sample_rate)
         except Exception as e:
-            logger.warning(f"Voice-clone engine load failed, staying on edge-tts/Piper/Kokoro: {e}")
-            self._clone_load_failed = True
+            if isinstance(e, CloneProcessError) and not getattr(engine, "alive", True):
+                # It died or hung (and was stopped): edge-tts for the rest of
+                # this session rather than a stall on every sentence.
+                self._clone_load_failed = True
+            logger.warning(f"Voice-clone synthesis failed, falling back to edge-tts: {e}")
             return None
 
     def _speak_via_clone(self, text: str, lang: str) -> bool:
@@ -1753,30 +1952,25 @@ class VoiceEngine:
         the normal edge-tts/Piper/Kokoro/SAPI chain exactly as if this
         method didn't exist - see _run_utterance()).
 
-        lang comes from voice/language.py's classify() - XTTS-v2 genuinely
-        supports both "en" and "hi" (unlike Piper/SAPI's fixed English-only
-        voice), so hinglish (romanized Hindi) is the only case mapped to
-        "en" here, same reasoning text_prep.prepare()'s own "en" path
-        already uses for anything that isn't classified Devanagari."""
+        Tier 31: XTTS-v2 runs in its own process, fed by the clone worker
+        thread (_clone_render()), usually already started by prefetch()
+        while the previous sentence was playing; this thread waits for it,
+        then plays it through _play_pcm() like every other local voice (so
+        the avatar's lip-sync and the time-to-first-audio stamp see it too).
+        Until that process is up, this returns False straight away - the
+        sentence goes out in the edge-tts voice instead of waiting."""
         if not HAS_NUMPY:
             return False
-        engine = self._get_clone_engine()
-        if engine is None:
+        if self._clone_engine_if_ready() is None:
             return False
-        reference_path = getattr(config, "TTS_CLONE_REFERENCE_PATH", "")
-        xtts_lang = "hi" if lang == language.HI else "en"
-        prepared = text_prep.prepare(text, xtts_lang, numbers="all")
+        rendered = self._clone_wait(self._clone_take(text, lang))
+        if rendered is None:
+            return False
+        pcm, sample_rate = rendered
         try:
-            samples = engine.tts(text=prepared, speaker_wav=reference_path, language=xtts_lang)
-            if samples is None or len(samples) == 0:
-                return False
-            pcm = np.clip(np.asarray(samples, dtype=np.float32), -1.0, 1.0)
-            pcm = (pcm * 32767.0).astype(np.int16)
-            sample_rate = int(getattr(getattr(engine, "synthesizer", None),
-                                       "output_sample_rate", 24000) or 24000)
             return self._play_pcm(pcm, sample_rate)
         except Exception as e:
-            logger.warning(f"Voice-clone synthesis/playback failed, falling back to edge-tts: {e}")
+            logger.warning(f"Voice-clone playback failed, falling back to edge-tts: {e}")
             return False
 
     def _speak_via_sapi(self, text: str) -> bool:

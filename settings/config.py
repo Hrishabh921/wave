@@ -443,6 +443,20 @@ class Config:
     # model download.
     TTS_CLONE_MODEL_NAME = os.getenv(
         "TTS_CLONE_MODEL_NAME", "tts_models/multilingual/multi-dataset/xtts_v2").strip()
+    # Tier 31: where XTTS-v2 runs (in its own process, voice/clone_worker.py).
+    # "auto" = the NVIDIA GPU when the installed PyTorch has CUDA, else the
+    # CPU; "cpu" / "cuda" force one. Measured on the user's laptop
+    # (i5-13450HX, RTX 3050 6GB): a sentence takes ~1.8x its own length to
+    # synthesize on the CPU and ~0.4x on the GPU, so on the CPU replies start
+    # several seconds later than with edge-tts. The default PyTorch wheel is
+    # CPU-only; the CUDA one is a separate ~1.9GB install (docs/VOICE_LOCAL.md).
+    TTS_CLONE_DEVICE = os.getenv("TTS_CLONE_DEVICE", "auto").strip().lower() or "auto"
+    # Tier 31: both launchers opt Wave's process out of Windows 11's power
+    # throttling (EcoQoS), which otherwise made the voice maths (cloned
+    # voice, Whisper) ~15x slower a second into any sustained work while
+    # Wave's window wasn't in front - see monitoring/power.py.
+    POWER_THROTTLING_OPT_OUT = os.getenv(
+        "POWER_THROTTLING_OPT_OUT", "true").strip().lower() not in ("false", "0", "no")
 
     # ── Tier 27: lifelike avatar animation (web UI's Dodo page) ─────────
     # LivePortrait (github.com/KwaiVGI/LivePortrait) re-draws the avatar

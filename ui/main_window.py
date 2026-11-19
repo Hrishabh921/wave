@@ -2527,13 +2527,18 @@ class MainWindow(QMainWindow):
         # found while running this tier against a real photo/voice sample
         # for the first time, not caught by the mocked tests, which never
         # exercise a second process start.
-        ref_path = (data.get("avatar_voice_reference_path") or "").strip()
-        if ref_path and os.path.exists(ref_path):
+        saved_ref = (data.get("avatar_voice_reference_path") or "").strip()
+        ref_path = avatar_rig.find_voice_reference(saved_ref, AVATAR_RIG_DIR)
+        if ref_path:
             config.TTS_CLONE_REFERENCE_PATH = ref_path
+            if ref_path != saved_ref:
+                # The project folder moved; remember where the clip is now.
+                self._persist_settings_key("avatar_voice_reference_path", ref_path)
             logger.info("Tier 25: restored voice-clone reference from a previous session.")
-        elif ref_path:
+            tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
+        elif saved_ref:
             logger.warning(
-                f"Tier 25: previously-set voice-clone reference '{ref_path}' is gone - "
+                f"Tier 25: previously-set voice-clone reference '{saved_ref}' is gone - "
                 "falling back to edge-tts/Piper/Kokoro until 'Build avatar' is run again."
             )
         logger.info("Tier 25: avatar companion active.")
@@ -2592,8 +2597,7 @@ class MainWindow(QMainWindow):
         if voice_sample_path:
             if os.path.exists(voice_sample_path):
                 config.TTS_CLONE_REFERENCE_PATH = voice_sample_path
-                tts_engine._clone_engine = None
-                tts_engine._clone_load_failed = False
+                tts_engine.reset_clone()   # Tier 31: stops the old sample's voice process
                 # Persisted separately from the file-picker fields (see
                 # _build_avatar_page()'s docstring) - this is the actual
                 # reference clip the TTS engine now depends on, so it has
@@ -2601,6 +2605,7 @@ class MainWindow(QMainWindow):
                 # to edge-tts the next time Wave starts. Restored by
                 # _init_avatar() above.
                 self._persist_settings_key("avatar_voice_reference_path", voice_sample_path)
+                tts_engine.warm_up_clone()
                 voice_note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 voice_note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"

@@ -1037,9 +1037,9 @@ class ParityMixin:
         if voice_sample_path:
             if os.path.exists(voice_sample_path):
                 config.TTS_CLONE_REFERENCE_PATH = voice_sample_path
-                tts_engine._clone_engine = None
-                tts_engine._clone_load_failed = False
+                tts_engine.reset_clone()   # Tier 31: stops the old sample's voice process
                 self.save_settings({"avatar_voice_reference_path": voice_sample_path})
+                tts_engine.warm_up_clone()
                 note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"

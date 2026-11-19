@@ -16,6 +16,9 @@ os.chdir(config.DATA_DIR)
 
 
 def main():
+    if config.POWER_THROTTLING_OPT_OUT:
+        from monitoring.power import keep_full_speed
+        keep_full_speed()
     from webui.app import run
     run()
 

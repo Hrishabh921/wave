@@ -102,6 +102,13 @@ class _DbIsolatedTestBase(unittest.TestCase):
         security_log.clear()
         self.addCleanup(audit_singleton.clear)
         self.addCleanup(security_log.clear)
+        # Tier 31: never the user's real wave_settings.json - the bridge now
+        # restores the saved voice sample from it at start-up, which set the
+        # process-wide clone path and started loading the real ~1.8GB voice
+        # model in the middle of these tests (and re-saved the user's file).
+        old_settings = bridge_module.SETTINGS_FILE
+        bridge_module.SETTINGS_FILE = os.path.join(tmp, "wave_settings.json")
+        self.addCleanup(setattr, bridge_module, "SETTINGS_FILE", old_settings)
 
 
 # ---------------------------------------------------------------------------

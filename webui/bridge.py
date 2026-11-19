@@ -124,11 +124,13 @@ class WaveWebBridge(ParityMixin):
         self._live_server = None
         self._speech_pending = False      # Tier 29: reply handed to TTS, audio not started yet
         self._wake_phrases = ["hello wave", "wake up", "hey wave"]
+        settings = self._load_settings_dict()
         # Tier 30: start with the saved wake words (Settings -> Voice), so the
         # mic listens for them from its first second, before the page loads.
-        saved = self._load_settings_dict().get("wake_phrases")
+        saved = settings.get("wake_phrases")
         if isinstance(saved, list) and any(isinstance(p, str) and p.strip() for p in saved):
             self._wake_phrases = [p.strip().lower() for p in saved if isinstance(p, str) and p.strip()]
+        self._restore_voice_reference(settings)
         self._skills = UserSkillLoader(os.path.join(config.DATA_DIR, "user_skills"))
         self._remote = None  # lazy: webui/bridge.py's own Tier-23 reuse, see _get_remote()
         # Mirrors MainWindow._start_reminder_worker(): a reminder set via
@@ -239,6 +241,24 @@ class WaveWebBridge(ParityMixin):
                    last_theme=settings.get("last_theme", "Black Glass"), first_run=not os.path.exists(SETTINGS_FILE),
                    default_path=FileManager.get_default_path(), local_ip=self._local_ip(),
                    provider_brief=brief, has_avatar_rig=bool(manifest))
+
+    def _restore_voice_reference(self, settings: dict):
+        """MainWindow._init_avatar()'s Tier 25 restore, which the web UI
+        never had: the voice sample "Build avatar" saved is what makes Wave
+        speak in the user's own cloned voice, and without this every web
+        session quietly spoke with edge-tts instead."""
+        saved = (settings.get("avatar_voice_reference_path") or "").strip()
+        path = avatar_rig.find_voice_reference(saved, AVATAR_RIG_DIR)
+        if path:
+            config.TTS_CLONE_REFERENCE_PATH = path
+            if path != saved:
+                # The project folder moved; remember where the clip is now.
+                self.save_settings({"avatar_voice_reference_path": path})
+            logger.info("Tier 25: restored voice-clone reference from a previous session.")
+            tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
+        elif saved:
+            logger.warning(f"Tier 25: previously-set voice-clone reference '{saved}' is gone - "
+                           "falling back to edge-tts/Piper/Kokoro until 'Build avatar' is run again.")
 
     def _load_settings_dict(self):
         if not os.path.exists(SETTINGS_FILE):

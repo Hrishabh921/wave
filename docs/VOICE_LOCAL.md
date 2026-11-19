@@ -198,6 +198,57 @@ sandbox (disk-space discipline, same reasoning as every other heavy optional
 dependency here) - a real reference clip, a real install, and a real listen on actual
 hardware are still needed before this is more than "the code path is correct."
 
+### Running it for real - Tier 31
+
+Installed and run on the user's laptop (Windows 11, i5-13450HX, 16 GB, RTX 3050 6GB)
+with their real sample. What that took:
+
+- **The licence prompt.** XTTS-v2 asks once, in a console, to accept Coqui's
+  non-commercial CPML. A windowed launch (`pythonw`) has no console, so do the first
+  download from a terminal (or with `COQUI_TOS_AGREED=1`); coqui-tts then writes
+  `tos_agreed.txt` next to the model and never asks again.
+- **Its own process.** XTTS-v2 never runs inside Wave's process: its token loop gives
+  up and re-takes Python's GIL about a thousand times per token, so any busy Python
+  thread in Wave (there are many - mic, AEC, UI bridge) made it up to 100x slower, and
+  it starved Wave's audio threads in turn. `voice/clone_worker.py` runs it in a process
+  of its own, which `voice/clone_client.py`'s `CloneVoiceProcess` starts and feeds one
+  sentence at a time over stdin/stdout; it exits when Wave does. Torch isn't loaded
+  into Wave's own process at all.
+- **No FFmpeg needed.** Since torchaudio 2.9, `torchaudio.load()` goes through
+  torchcodec, which needs FFmpeg's DLLs - so XTTS's own loader failed on every
+  sentence. The worker reads the sample with soundfile and works the voice latents out
+  once per sample file (`voice/clone_xtts.py`), with the model's own settings.
+- **Rendered ahead, never waited for.** On the CPU a sentence takes ~1.8x its own
+  length to synthesize, so `prefetch()` queues each streamed sentence on one ordered
+  worker (the next one is made while the current one plays). Both UIs start the voice
+  process at start-up in the background (`warm_up_clone()`, ~15-20 s, ~2.7 GB of RAM in
+  that process); until it's up, sentences go out in the edge-tts voice.
+- **Windows power throttling.** Windows 11 moved Wave's process to slow efficiency
+  cores about a second into any sustained work - torch's maths got ~15x slower - so
+  both launchers and the voice process opt out (`monitoring/power.py`).
+
+Measured (the same model and sample):
+
+| | synthesis time / speech length | first sentence of a reply starts after |
+|---|---|---|
+| CPU (wave_env's default PyTorch) | ~1.8x | ~1.8x that sentence's length |
+| RTX 3050 (CUDA PyTorch) | ~0.4x | ~0.4x that sentence's length |
+
+In the real web app on the CPU, with Whisper transcribing room audio at the same time,
+sentences ran at 2.4-4.2x and a typed question's first cloned audio came ~13 s after
+sending - the GPU build is what makes the cloned voice keep up with conversation.
+
+Speaker similarity to the sample (XTTS's own speaker encoder): 0.63-0.76 for cloned
+lines, 0.21 for edge-tts's Neerja.
+
+`TTS_CLONE_DEVICE=auto` (the default) uses the GPU as soon as PyTorch can. wave_env
+ships the CPU build; to switch it to the CUDA build of the same version (~1.9 GB
+download; NVIDIA driver with CUDA 13 support):
+
+```powershell
+wave_env\Scripts\pip install --no-deps --force-reinstall torch==2.14.1+cu130 --index-url https://download.pytorch.org/whl/cu130
+```
+
 ## What's still open
 
 - No Settings-dialog UI for either download's consent prompt (see above) - natural
@@ -214,7 +265,6 @@ hardware are still needed before this is more than "the code path is correct."
   note, not just the first N seconds), and `config.TTS_CLONE_REFERENCE_PATH` is wired
   up and persisted (see `docs/ROADMAP_BEAT_SARA.md`'s Tier 25 "Status" for a real bug
   this surfaced and fixed - the reference path wasn't being saved across restarts).
-  What's still open: `coqui-tts` itself still isn't installed anywhere this has run
-  (multi-GB, disk-space discipline unchanged), so the actual XTTS-v2 synthesis and
-  how the cloned voice really sounds are both still "the reasoning holds up," not a
-  measurement - that needs `pip install coqui-tts` on the user's own machine.
+  Tier 31 installed and ran it on the user's machine (see "Running it for real"
+  above): it works and measures like their voice. Still open: the user's own
+  listening verdict, and the CUDA PyTorch build in wave_env for GPU speed.

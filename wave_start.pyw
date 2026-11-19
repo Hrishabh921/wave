@@ -40,6 +40,9 @@ def _run_healthcheck() -> int:
 
 def main():
     logging.info("Initializing Wave AI GUI in Background...")
+    if config.POWER_THROTTLING_OPT_OUT:
+        from monitoring.power import keep_full_speed
+        keep_full_speed()
     from PyQt6.QtWidgets import QApplication
     from ui.main_window import MainWindow
 

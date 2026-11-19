@@ -175,3 +175,29 @@ def load_manifest(out_dir: str):
         return None
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def find_voice_reference(saved_path: str, rig_dir: str) -> str:
+    """The voice-clone sample "Build avatar" saved (wave_settings.json's
+    avatar_voice_reference_path), as a path that exists on THIS machine -
+    or "" when there is none, which keeps cloning off.
+
+    The setting holds an absolute path, so it dies when the project folder
+    moves: the user's real sample was prepared in a Linux build sandbox
+    (/home/claude/wave/avatar_rig/voice_reference.wav) and the project then
+    copied to their Windows PC, where both UIs quietly fell back to
+    edge-tts. A clip that lived in an avatar_rig folder travels with the
+    project, so look for the same file name in this install's rig folder.
+    A sample kept anywhere else is the user's own file and isn't guessed
+    at."""
+    saved = (saved_path or "").strip()
+    if not saved:
+        return ""
+    if os.path.isfile(saved):
+        return saved
+    parts = [p for p in saved.replace("\\", "/").split("/") if p]
+    if len(parts) >= 2 and parts[-2].lower() == "avatar_rig":
+        moved = os.path.join(rig_dir, parts[-1])
+        if os.path.isfile(moved):
+            return moved
+    return ""
