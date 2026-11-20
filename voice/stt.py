@@ -17,6 +17,7 @@ from voice import transcript_filter
 # looked up in sys.modules directly (same as voice.aec/voice.buffers
 # below), so popping "voice.language" actually gets a fresh tracker.
 import voice.language as language
+import voice.speaker_id as speaker_id
 from voice.endpoint import EndpointConfig
 from settings.config import config
 
@@ -64,6 +65,8 @@ class Transcript(str):
                       noise floor (continuous stream only, else None).
       tts_overlap   - Tier 12: Wave was talking while this was said.
       truncated     - Tier 12: the safety cap (STT_MAX_UTTERANCE_S) cut it.
+      speaker_score - Tier 32: how much the voice sounded like the owner's
+                      (voice/speaker_id.py), None if it wasn't checked.
     These timestamps feed telemetry/ttfa.py's time-to-first-audio numbers.
     """
     confidence = None
@@ -71,6 +74,7 @@ class Transcript(str):
     tts_overlap = False
     truncated = False
     rejected_text = None      # Tier 30: what Whisper heard but scored too low ("" transcripts only)
+    speaker_score = None
 
     def __new__(cls, text: str, wake_detected: bool = False, engine: str = "",
                 speech_end: float = None, captured_at: float = None, recognized_at: float = None,
@@ -640,12 +644,27 @@ class SpeechReceiver:
                 return None
             else:
                 allow_cloud = bool(config.STT_CLOUD_WHILE_ASLEEP)
+        # Tier 32: whose voice is it? Anyone but the owner (the TV, a video,
+        # other people) is dropped here, before it's even transcribed. Not
+        # while Wave itself is talking: its echo is in that audio, and the
+        # owner's "ruk jao" must always get through.
+        speaker = self._speaker_check(audio)
+        if speaker is not None and not speaker.is_owner and not tts_overlap:
+            logger.info(f"Not your voice (speaker score {speaker.score:.2f}) - ignored, not transcribed")
+            return None
         result = self._recognize(audio, wake_detected=wake_detected, allow_cloud=allow_cloud,
                                  audio_s=audio_s, snr_db=snr_db)
         if isinstance(result, Transcript):
             result.speech_end = timing.get("speech_end")
             result.captured_at = timing.get("captured_at")
             result.recognized_at = time.monotonic()
+            if speaker is not None:
+                result.speaker_score = speaker.score
+                logger.info(f"Speaker check: {speaker.score:.2f} ({'you' if speaker.is_owner else 'unsure'})")
+                # Clearly the owner, through this PC's mic, and not Wave's own
+                # (cloned) voice: let the voiceprint learn from it.
+                if str(result).strip() and not tts_overlap:
+                    speaker_id.speaker_verifier.learn(speaker)
             if wake_detected:
                 # Second stage (voice/wakeword.py's confirm()): a weak
                 # detection must also LOOK like the wake phrase in the
@@ -659,6 +678,17 @@ class SpeechReceiver:
                                 f"{str(result)[:40]!r} - ignoring")
                     return None
         return result
+
+    @staticmethod
+    def _speaker_check(audio):
+        """Tier 32: voice/speaker_id.py's verdict on this audio, or None when
+        there's nothing to compare it with (no speaker model, no voice
+        sample, SPEAKER_VERIFY=off, too short) - then nothing changes."""
+        try:
+            raw = audio.get_raw_data(convert_rate=speaker_id.SAMPLE_RATE, convert_width=2)
+        except Exception:
+            return None
+        return speaker_id.speaker_verifier.check(raw, speaker_id.SAMPLE_RATE)
 
     def _recognize(self, audio, wake_detected: bool = False, allow_cloud: bool = True,
                    audio_s: float = None, snr_db: float = None):

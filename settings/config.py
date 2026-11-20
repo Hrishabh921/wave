@@ -458,6 +458,22 @@ class Config:
     POWER_THROTTLING_OPT_OUT = os.getenv(
         "POWER_THROTTLING_OPT_OUT", "true").strip().lower() not in ("false", "0", "no")
 
+    # ── Tier 32: only the owner's voice (voice/speaker_id.py) ────────────
+    # Every utterance's VOICE is compared with a voiceprint built from the
+    # owner's voice sample (the cloned voice's TTS_CLONE_REFERENCE_PATH,
+    # set by Settings -> Avatar -> Build avatar); other voices - the TV, a
+    # video, other people - are dropped before they're even transcribed.
+    # "auto" = on whenever the speaker model (scripts/download_speaker_model.py)
+    # and a voice sample are there; "off" = every voice counts, as before.
+    SPEAKER_VERIFY = _choice_env("SPEAKER_VERIFY", "auto", ("auto", "off"))
+    # 0-1 voice similarity needed to count as the owner. Calibrated on the
+    # owner's sample vs 10 other voices through a simulated room: 1 s of the
+    # owner >= 0.29, other voices <= 0.28 (from 1.5 s: owner >= 0.48, others
+    # <= 0.25). Utterances under 1 s aren't checked (too little to go on).
+    SPEAKER_VERIFY_THRESHOLD = _float_env("SPEAKER_VERIFY_THRESHOLD", "0.28", min=0.0, max=1.0)
+    # Blank = <data dir>/voice_models/speaker/<the CAM++ model file>.
+    SPEAKER_MODEL_PATH = os.getenv("SPEAKER_MODEL_PATH", "").strip()
+
     # ── Tier 27: lifelike avatar animation (web UI's Dodo page) ─────────
     # LivePortrait (github.com/KwaiVGI/LivePortrait) re-draws the avatar
     # photo with real blinks, eye movement, breathing and a talking mouth.

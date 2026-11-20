@@ -63,6 +63,7 @@ from monitoring.sys_monitor import SystemMonitor
 from vision.screen_capture import VisionCapture
 from vision.ocr_engine import ocr as ocr_engine
 from voice.tts import tts_engine
+from voice.speaker_id import speaker_verifier
 from avatar import rig as avatar_rig
 from avatar import live as avatar_live
 from avatar.state import AvatarStateMachine
@@ -256,6 +257,7 @@ class WaveWebBridge(ParityMixin):
                 self.save_settings({"avatar_voice_reference_path": path})
             logger.info("Tier 25: restored voice-clone reference from a previous session.")
             tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
+            speaker_verifier.warm_up()   # Tier 32: the owner's voiceprint, from the same sample
         elif saved:
             logger.warning(f"Tier 25: previously-set voice-clone reference '{saved}' is gone - "
                            "falling back to edge-tts/Piper/Kokoro until 'Build avatar' is run again.")

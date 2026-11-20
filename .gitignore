@@ -62,3 +62,5 @@ piper_voices/
 # --- Tier 11: openWakeWord's feature files, downloaded on first use (not ours
 #     to redistribute) - Wave's own voice_models/wakewords/hey_wave.onnx IS tracked ---
 voice_models/openwakeword/
+# --- Tier 32: the speaker model (scripts/download_speaker_model.py fetches it) ---
+voice_models/speaker/

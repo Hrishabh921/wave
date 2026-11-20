@@ -94,6 +94,7 @@ class WebRestoreTests(unittest.TestCase):
         cfg.TTS_CLONE_REFERENCE_PATH = ""
         with mock.patch.object(bridge_module, "SETTINGS_FILE", path), \
                 mock.patch.object(bridge_module, "AVATAR_RIG_DIR", rig), \
+                mock.patch.object(bridge_module.speaker_verifier, "warm_up"), \
                 mock.patch.object(bridge_module.tts_engine, "warm_up_clone") as warm:
             bridge = bridge_module.WaveWebBridge(brain=object())
         self.addCleanup(bridge._reminder_worker.stop)
