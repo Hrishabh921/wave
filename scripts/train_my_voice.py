@@ -9,6 +9,7 @@ the same mic Wave listens with, and adds that to the voiceprint.
 
     python scripts/train_my_voice.py              # you (30 s), then a video (20 s)
     python scripts/train_my_voice.py --no-video   # just you
+    python scripts/train_my_voice.py --video-only # no training: how a video's voices score now
     python scripts/train_my_voice.py --reset      # forget the training and what was learned
 
 Beeps: one = start reading, two = stop talking and play a video (it measures how
@@ -87,11 +88,32 @@ def unit(v):
     return v / (float(np.linalg.norm(v)) + 1e-9)
 
 
+def video_scores(verifier, video):
+    """1.5 s pieces of a recording with only OTHER voices in it (a video, the
+    owner silent), scored against the current voiceprint."""
+    voiced, peak = speech_only(video)
+    scores = []
+    for p in pieces(voiced, 1.5):
+        check = verifier.check((np.clip(p, -1, 1) * 32767).astype("<i2").tobytes())
+        if check is not None:
+            scores.append(check.score)
+    print()
+    print(f"video: {len(voiced) / RATE:.1f}s of sound (peak {peak:.2f}), {len(scores)} pieces")
+    if scores:
+        print(f"other voices score: max {max(scores):.2f}, p95 {np.percentile(scores, 95):.2f}, "
+              f"mean {np.mean(scores):.2f} (threshold {verifier.threshold():.2f})")
+    else:
+        print("no sound from the video was long enough to score")
+    return scores
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Teach Wave your voice through this PC's mic.")
     parser.add_argument("--seconds", type=float, default=30.0, help="how long you read (default 30)")
     parser.add_argument("--video-seconds", type=float, default=20.0, help="how long the video plays (default 20)")
     parser.add_argument("--no-video", action="store_true", help="skip the video part")
+    parser.add_argument("--video-only", action="store_true",
+                        help="no training: just measure how a video's voices score now (you silent)")
     parser.add_argument("--reset", action="store_true", help="forget the voice training and what was learned")
     args = parser.parse_args(argv)
     verifier = speaker_id.speaker_verifier
@@ -108,6 +130,16 @@ def main(argv=None) -> int:
     if not verifier._ready_model():
         print("The speaker model isn't installed - run: python scripts/download_speaker_model.py")
         return 1
+    if args.video_only:
+        if not verifier.ready():
+            print("No voiceprint yet - train first (python scripts/train_my_voice.py).")
+            return 1
+        beep(1)
+        print(f"[play a video now, you silent; recording it for {args.video_seconds:.0f}s]", flush=True)
+        video = record(args.video_seconds)
+        beep(2)
+        video_scores(verifier, video)
+        return 0
     print("Read these lines out loud, at your normal voice, TV and videos OFF:")
     for line in LINES:
         print("   ", line)
@@ -127,7 +159,6 @@ def main(argv=None) -> int:
         print("Not enough speech heard (need ~12 s) - nothing saved. Speak a little louder or closer, and try again.")
         return 2
     embs = verifier.window_embeddings(voiced)
-    mean_all = unit(np.mean(embs, axis=0))
     loo = [float(e @ unit(np.mean([o for j, o in enumerate(embs) if j != i], axis=0))) for i, e in enumerate(embs)]
     kept = [e for e, s in zip(embs, loo) if s >= 0.45]
     print(f"pieces: {len(embs)}, agreeing with the rest: {len(kept)} (min {min(loo):.2f}, mean {np.mean(loo):.2f})")
@@ -157,24 +188,13 @@ def main(argv=None) -> int:
     print(f"saved: {len(kept)} pieces of your voice through this mic -> {verifier.voiceprint_path()}")
 
     if video is not None:
-        v_voiced, v_peak = speech_only(video)
-        others = []
-        for p in pieces(v_voiced, 1.5):
-            check = verifier.check((np.clip(p, -1, 1) * 32767).astype("<i2").tobytes())
-            if check is not None:
-                others.append(check.score)
-        print(f"\nvideo: {len(v_voiced) / RATE:.1f}s of speech (peak {v_peak:.2f}), {len(others)} pieces")
-        if others:
-            print(f"other voices now score: max {max(others):.2f}, p95 {np.percentile(others, 95):.2f}, "
-                  f"mean {np.mean(others):.2f}")
-            if own_scores:
-                low_you, high_them = float(np.percentile(own_scores, 10)), float(max(others))
-                suggestion = round(min(0.6, max(0.2, (low_you + high_them) / 2)), 2)
-                gap = "a clear gap" if low_you > high_them else "an OVERLAP"
-                print(f"suggested SPEAKER_VERIFY_THRESHOLD: {suggestion:.2f} ({gap}: you p10 {low_you:.2f} "
-                      f"vs other voices max {high_them:.2f})")
-        else:
-            print("no speech heard from the video - threshold left as it is")
+        others = video_scores(verifier, video)
+        if others and own_scores:
+            low_you, high_them = float(np.percentile(own_scores, 10)), float(max(others))
+            suggestion = round(min(0.6, max(0.2, (low_you + high_them) / 2)), 2)
+            gap = "a clear gap" if low_you > high_them else "an OVERLAP"
+            print(f"suggested SPEAKER_VERIFY_THRESHOLD: {suggestion:.2f} ({gap}: you p10 {low_you:.2f} "
+                  f"vs other voices max {high_them:.2f})")
     return 0
 
 

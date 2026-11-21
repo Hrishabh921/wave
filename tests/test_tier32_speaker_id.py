@@ -225,6 +225,29 @@ class TrainingTests(_Base):
             self.assertEqual(script.main(["--reset"]), 0)
         self.assertFalse(os.path.exists(self.voiceprint))
 
+    def test_video_only_measures_other_voices_without_training(self):
+        """How the owner's laptop was tuned: a video's voices scored at most
+        0.21 against the trained voiceprint (the owner 0.71+) - 0.35 in .env."""
+        import contextlib  # noqa: PLC0415
+        import importlib.util  # noqa: PLC0415
+        import io  # noqa: PLC0415
+        spec = importlib.util.spec_from_file_location("train_my_voice",
+                                                      os.path.join(S.ROOT, "scripts", "train_my_voice.py"))
+        script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(script)
+        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
+        trained = len(self.v._mic)
+        quiet = np.zeros(RATE, np.float32)
+        video = np.concatenate([quiet, tone(650, 3.0), quiet, tone(650, 3.0), quiet])   # someone else talking
+        out = io.StringIO()
+        with mock.patch.object(script.speaker_id, "speaker_verifier", self.v), \
+                mock.patch.object(script, "record", return_value=video), \
+                mock.patch.object(script, "beep"), mock.patch.object(script, "keep_full_speed"), \
+                mock.patch.object(self.v, "_ready_model", return_value=True), contextlib.redirect_stdout(out):
+            self.assertEqual(script.main(["--video-only", "--video-seconds", "6"]), 0)
+        self.assertIn("other voices score: max", out.getvalue())
+        self.assertEqual(len(self.v._mic), trained)
+
 
 class _Audio:
     def __init__(self, x):

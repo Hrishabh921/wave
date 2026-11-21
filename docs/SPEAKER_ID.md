@@ -55,7 +55,15 @@ the owner's held-out 1.5 s pieces scored **0.71-0.74**. `--no-video` skips the v
 part; `--reset` forgets the training and everything learned.
 
 The video part only helps when the video plays on another device (a TV, a phone): this
-laptop's mic array removes the laptop's own speaker sound.
+laptop's mic array removes the laptop's own speaker sound. `--video-only` measures just
+that, any time, without touching the training.
+
+Measured on the owner's laptop after training (a video on a phone, owner silent, 12
+pieces of 1.5 s): other voices scored **at most 0.21** (mean 0.15) - also against the
+mic training alone, so sharing the room and the mic doesn't make voices match - while
+the owner scored **0.71-0.74**. That laptop's `.env` has `SPEAKER_VERIFY_THRESHOLD=0.35`:
+well above the video, well below the owner. The 0.28 default stays for voiceprints
+without mic training.
 
 The model is 3D-Speaker's CAM++ (`iic/speech_campplus_sv_zh_en_16k-common_advanced`,
 Chinese+English, 16 kHz, 192-d; the 3D-Speaker project is Apache-2.0) as exported by
@@ -94,8 +102,6 @@ sound.
   hearing itself - echo cancellation and the "Wave is talking" rules still do that.
 - A TV saying a short "baby" can still wake Wave (under 1 s isn't checked); what it says
   next is dropped, and Wave dozes off again.
-- How other people's voices score through the owner's mic *after* training isn't
-  measured yet (in the first training run the "video" part held the owner's own voice,
-  so the threshold stayed at 0.28). If Wave starts ignoring you or answering others, the
-  log lines above show the scores - adjust `SPEAKER_VERIFY_THRESHOLD`, re-run
-  `train_my_voice.py`, or set `SPEAKER_VERIFY=off`.
+- If Wave starts ignoring you or answering others, the log lines above show the
+  scores - adjust `SPEAKER_VERIFY_THRESHOLD`, re-run `train_my_voice.py`, or set
+  `SPEAKER_VERIFY=off`.
