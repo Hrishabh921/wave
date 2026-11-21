@@ -166,6 +166,66 @@ class LearningTests(_Base):
         self.assertEqual(len(self.v._learned), sid.MAX_LEARNED)
 
 
+class TrainingTests(_Base):
+    """Tier 32b: the owner's voice through this PC's mic (scripts/train_my_voice.py).
+    In the real test their mic voice scored only 0.16-0.19 against the
+    phone-recorded sample, and 0.71+ once trained."""
+
+    def test_training_adds_the_mic_voice_and_is_saved(self):
+        self.v.ready()
+        mic_voice = tone(330, 10.0, seed=11)          # 'the owner, as this mic hears them'
+        self.assertFalse(self.v.check(pcm(tone(330, 2.0, seed=12))).is_owner)
+        self.v.set_training(self.v.window_embeddings(mic_voice))
+        self.assertTrue(self.v.check(pcm(tone(330, 2.0, seed=12))).is_owner)
+        again = self._verifier()
+        self.assertTrue(again.check(pcm(tone(330, 2.0, seed=13))).is_owner)
+        self.assertEqual(len(again._mic), len(self.v.window_embeddings(mic_voice)))
+
+    def test_training_alone_is_enough_without_a_voice_sample(self):
+        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
+        with mock.patch.object(sid.config, "TTS_CLONE_REFERENCE_PATH", ""):
+            verifier = self._verifier()
+            self.assertTrue(verifier.ready())
+            self.assertTrue(verifier.check(pcm(tone(330, 2.0, seed=14))).is_owner)
+            self.assertFalse(verifier.check(pcm(tone(220, 2.0, seed=15))).is_owner)
+
+    def test_a_new_voice_sample_keeps_the_training(self):
+        self.v.ready()
+        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
+        sf.write(self.sample, tone(880, 6.0), RATE)
+        stamp = os.path.getmtime(self.sample) + 10
+        os.utime(self.sample, (stamp, stamp))
+        self.assertTrue(self.v.ready())
+        self.assertTrue(self.v.check(pcm(tone(880, 2.0, seed=16))).is_owner)
+        self.assertTrue(self.v.check(pcm(tone(330, 2.0, seed=17))).is_owner)
+
+    def test_sample_scores_compare_against_the_sample_alone(self):
+        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
+        scores = self.v.sample_scores(self.v.window_embeddings(tone(330, 6.0)))
+        self.assertTrue(scores and max(scores) < 0.28)
+        with mock.patch.object(sid.config, "TTS_CLONE_REFERENCE_PATH", ""):
+            self.assertIsNone(self._verifier().sample_scores([np.ones(64, np.float32)]))
+
+    def test_the_training_script_finds_speech_and_can_forget_everything(self):
+        import importlib.util  # noqa: PLC0415
+        spec = importlib.util.spec_from_file_location("train_my_voice",
+                                                      os.path.join(S.ROOT, "scripts", "train_my_voice.py"))
+        script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(script)
+        quiet = np.zeros(RATE, np.float32)
+        x = np.concatenate([quiet, tone(330, 3.0), quiet, tone(330, 2.0), quiet])
+        voiced, peak = script.speech_only(x)
+        # the 5 s of speech plus ~150 ms kept either side of each stretch
+        self.assertGreaterEqual(len(voiced) / RATE, 5.0)
+        self.assertLessEqual(len(voiced) / RATE, 6.0)
+        self.assertGreater(peak, 0.1)
+        self.v.ready()
+        self.assertTrue(os.path.isfile(self.voiceprint))
+        with mock.patch.object(script.speaker_id, "speaker_verifier", self.v):
+            self.assertEqual(script.main(["--reset"]), 0)
+        self.assertFalse(os.path.exists(self.voiceprint))
+
+
 class _Audio:
     def __init__(self, x):
         self.x = x

@@ -145,8 +145,10 @@ class SpeakerVerifier:
         self._input_name = None
         self._load_failed = False
         self._lock = threading.RLock()
-        self._centroids = None             # (k, d) for the current sample
-        self._sample_key = None
+        self._loaded = False               # voiceprint.npz read yet?
+        self._centroids = None             # (k, d) from the voice sample, if there is one
+        self._sample_key = []              # which sample file those came from
+        self._mic = []                     # Tier 32b: the owner's voice training through this mic
         self._learned = []
         self._warned = set()
         self._announced = None             # the voiceprint the "on" line was logged for
@@ -229,20 +231,33 @@ class SpeakerVerifier:
             return False
 
     # -- the voiceprint ------------------------------------------------------
+    # Saved in avatar_rig/voiceprint.npz: the voice sample's three centroids
+    # (with which file they came from), the owner's mic training (Tier 32b,
+    # scripts/train_my_voice.py) and what was learned from their commands.
     def _sample_identity(self, path: str):
-        return [os.path.abspath(path), int(os.path.getmtime(path)), int(os.path.getsize(path)), MODEL_FILE,
-                _VOICEPRINT_VERSION]
+        return [str(v) for v in (os.path.abspath(path), int(os.path.getmtime(path)), int(os.path.getsize(path)),
+                                 MODEL_FILE, _VOICEPRINT_VERSION)]
+
+    def _has_targets(self) -> bool:
+        return (self._centroids is not None and len(self._centroids) > 0) or bool(self._mic)
 
     def _ready_voiceprint(self) -> bool:
+        if not self._loaded:
+            self._load_voiceprint()
         path = self.sample_path()
-        if not path:
-            self._warn_once("sample", "Speaker check off: no voice sample set up (Settings -> Avatar -> Build avatar).")
+        key = self._sample_identity(path) if path else []
+        if key and self._sample_key != key:
+            self._build_sample_centroids(path, key)
+            self._save_voiceprint()
+        elif not key and self._sample_key:
+            self._centroids, self._sample_key = None, []     # the sample is gone; any mic training stays
+        if not self._has_targets():
+            self._warn_once("sample", "Speaker check off: no voice sample (Settings -> Avatar -> Build avatar) "
+                                      "and no voice training (python scripts/train_my_voice.py).")
             return False
-        key = self._sample_identity(path)
-        if self._centroids is not None and self._sample_key == key:
-            return True
-        if self._load_voiceprint(key):
-            return True
+        return True
+
+    def _build_sample_centroids(self, path: str, key):
         started = time.monotonic()
         x = load_sample(path)
         win = SAMPLE_RATE * 3
@@ -252,44 +267,54 @@ class SpeakerVerifier:
             embs = [self._embed(w if effect is None else room(w, 1000 * (c + 1) + i, **effect))
                     for i, w in enumerate(windows)]
             centroids.append(_unit(np.mean(embs, axis=0)))
-        self._centroids, self._sample_key, self._learned = np.stack(centroids), key, []
-        self._save_voiceprint()
+        self._centroids, self._sample_key = np.stack(centroids), key
         logger.info(f"Speaker check: voiceprint built from '{path}' ({len(windows)} windows, "
                     f"{time.monotonic() - started:.1f}s).")
-        return True
 
-    def _load_voiceprint(self, key) -> bool:
+    def _load_voiceprint(self):
+        self._loaded = True
         path = self.voiceprint_path()
         if not os.path.isfile(path):
-            return False
+            return
         try:
             with np.load(path, allow_pickle=False) as data:
-                if [str(v) for v in data["sample_key"].tolist()] != [str(v) for v in key]:
-                    return False
-                self._centroids = data["centroids"].astype(np.float32)
-                learned = data["learned"].astype(np.float32)
-            self._learned = [row for row in learned]
-            self._sample_key = key
-            return True
+                self._sample_key = [str(v) for v in data["sample_key"].tolist()]
+                centroids = data["centroids"].astype(np.float32)
+                self._centroids = centroids if len(centroids) else None
+                self._mic = [row for row in data["mic"].astype(np.float32)] if "mic" in data.files else []
+                self._learned = [row for row in data["learned"].astype(np.float32)]
         except Exception as e:
-            logger.warning(f"Speaker check: couldn't read the saved voiceprint ({e}) - rebuilding it.")
-            return False
+            logger.warning(f"Speaker check: couldn't read the saved voiceprint ({e}) - starting a new one.")
+            self._sample_key, self._centroids, self._mic, self._learned = [], None, [], []
 
     def _save_voiceprint(self):
         path = self.voiceprint_path()
+
+        def rows(items):
+            if items is not None and len(items):
+                return np.stack(list(items)).astype(np.float32)
+            return np.zeros((0, self._dim()), np.float32)
+
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            learned = np.stack(self._learned) if self._learned else np.zeros((0, self._centroids.shape[1]), np.float32)
             tmp = path + ".tmp"
             with open(tmp, "wb") as f:
-                np.savez(f, sample_key=np.array([str(v) for v in self._sample_key]),
-                         centroids=self._centroids, learned=learned)
+                np.savez(f, sample_key=np.array(list(self._sample_key or []), dtype=str),
+                         centroids=rows(self._centroids), mic=rows(self._mic), learned=rows(self._learned))
             os.replace(tmp, path)
         except Exception as e:
             logger.warning(f"Speaker check: couldn't save the voiceprint ({e}).")
 
+    def _dim(self) -> int:
+        for items in (self._centroids, self._mic, self._learned):
+            if items is not None and len(items):
+                return int(np.asarray(items[0]).shape[-1])
+        return 192
+
     def _targets(self):
-        targets = list(self._centroids)
+        targets = list(self._centroids) if self._centroids is not None else []
+        if self._mic:
+            targets.append(_unit(np.mean(self._mic, axis=0)))
         if self._learned:
             targets.append(_unit(np.mean(self._learned, axis=0)))
         return targets
@@ -305,9 +330,13 @@ class SpeakerVerifier:
             except Exception as e:
                 self._warn_once("ready", f"Speaker check off: {e}")
                 return False
-            if ok and self._announced != self._sample_key:
-                self._announced = self._sample_key
-                logger.info(f"Speaker check on: only the voice in '{self.sample_path()}' counts "
+            state = (tuple(self._sample_key or ()), len(self._mic))
+            if ok and self._announced != state:
+                self._announced = state
+                parts = [f"the voice sample '{self.sample_path()}'"] if self._sample_key else []
+                if self._mic:
+                    parts.append(f"voice training through this mic ({len(self._mic)} pieces)")
+                logger.info(f"Speaker check on: only the voice in {' + '.join(parts)} counts "
                             f"(+{len(self._learned)} learned, threshold {self.threshold():.2f}).")
             return ok
 
@@ -347,17 +376,50 @@ class SpeakerVerifier:
         if check is None or check.embedding is None or check.score < LEARN_SCORE:
             return False
         with self._lock:
-            if self._centroids is None:
+            if not self._has_targets():
                 return False
             self._learned.append(np.asarray(check.embedding, dtype=np.float32))
             del self._learned[:-MAX_LEARNED]
             self._save_voiceprint()
         return True
 
-    def reset(self):
-        """Forget the voiceprint (the voice sample changed)."""
+    # -- Tier 32b: voice training through this PC's mic ------------------------
+    def window_embeddings(self, x, seconds: float = 3.0, hop: float = 1.5):
+        """Embeddings of overlapping `seconds`-long windows of `x` (16 kHz
+        float32 speech). Raises if the model can't be loaded."""
         with self._lock:
-            self._centroids, self._sample_key, self._learned = None, None, []
+            if not self._ready_model():
+                raise RuntimeError("the speaker model isn't available")
+            n, step = int(seconds * SAMPLE_RATE), int(hop * SAMPLE_RATE)
+            windows = [x[i:i + n] for i in range(0, max(1, len(x) - n + 1), step)] or [x]
+            return [self._embed(w) for w in windows]
+
+    def sample_scores(self, embeddings):
+        """How each embedding scores against the voice sample's centroids
+        alone (None when there's no sample) - for comparing the owner's mic
+        voice with the phone-recorded sample."""
+        with self._lock:
+            if not self._loaded:
+                self._load_voiceprint()
+            path = self.sample_path()
+            if path and self._sample_key != self._sample_identity(path):
+                self._build_sample_centroids(path, self._sample_identity(path))
+            if self._centroids is None or not len(self._centroids):
+                return None
+            return [max(float(e @ c) for c in self._centroids) for e in embeddings]
+
+    def set_training(self, embeddings) -> None:
+        """Replaces the mic training with these embeddings (and saves it)."""
+        with self._lock:
+            if not self._loaded:
+                self._load_voiceprint()
+            self._mic = [np.asarray(e, dtype=np.float32) for e in embeddings]
+            self._save_voiceprint()
+
+    def reset(self):
+        """Forget the in-memory voiceprint (reloaded from disk on next use)."""
+        with self._lock:
+            self._loaded, self._centroids, self._sample_key, self._mic, self._learned = False, None, [], [], []
 
 
 speaker_verifier = SpeakerVerifier()

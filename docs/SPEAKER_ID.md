@@ -9,7 +9,8 @@ Whisper CPU spent on them, nothing they said written to the log.
 
 ## How it decides
 
-- **The voiceprint** comes from the voice sample the owner gave for Wave's cloned voice
+- **The voiceprint** comes from the owner's voice training through this PC's mic (see
+  below) and from the voice sample the owner gave for Wave's cloned voice
   (Settings → Avatar → Build avatar; `TTS_CLONE_REFERENCE_PATH`,
   `avatar_rig/voice_reference.wav`). It holds three averages of that sample: as
   recorded, and as if heard across a room by a laptop mic (mild and harsh: reverb, band
@@ -37,7 +38,24 @@ Not your voice (speaker score 0.12) - ignored, not transcribed
 ```powershell
 wave_env\Scripts\pip install kaldi-native-fbank==1.23.3
 wave_env\Scripts\python scripts\download_speaker_model.py
+wave_env\Scripts\python scripts\train_my_voice.py
 ```
+
+### Voice training through this PC's mic (Tier 32b) - do this
+
+The voice sample is usually a phone recording, and a phone and a laptop mic hear the
+same person very differently. On the owner's laptop their own voice through the mic
+scored only **0.16-0.19** against their WhatsApp sample - below the 0.28 threshold, so
+Wave would have ignored its owner. `scripts/train_my_voice.py` fixes that: Wave closed,
+TV off, it beeps once and records you reading five lines (30 s), beeps twice and
+records 20 s of a video with you silent (to see how other voices score through the same
+mic), and beeps three times when done. Pieces that don't sound like the rest are
+dropped, and nothing is saved if the recording isn't one clear voice. After training,
+the owner's held-out 1.5 s pieces scored **0.71-0.74**. `--no-video` skips the video
+part; `--reset` forgets the training and everything learned.
+
+The video part only helps when the video plays on another device (a TV, a phone): this
+laptop's mic array removes the laptop's own speaker sound.
 
 The model is 3D-Speaker's CAM++ (`iic/speech_campplus_sv_zh_en_16k-common_advanced`,
 Chinese+English, 16 kHz, 192-d; the 3D-Speaker project is Apache-2.0) as exported by
@@ -76,6 +94,8 @@ sound.
   hearing itself - echo cancellation and the "Wave is talking" rules still do that.
 - A TV saying a short "baby" can still wake Wave (under 1 s isn't checked); what it says
   next is dropped, and Wave dozes off again.
-- Real numbers through the owner's own mic are still to come: if Wave starts ignoring
-  you, the log lines above show your scores - lower `SPEAKER_VERIFY_THRESHOLD` a little,
-  or set `SPEAKER_VERIFY=off`.
+- How other people's voices score through the owner's mic *after* training isn't
+  measured yet (in the first training run the "video" part held the owner's own voice,
+  so the threshold stayed at 0.28). If Wave starts ignoring you or answering others, the
+  log lines above show the scores - adjust `SPEAKER_VERIFY_THRESHOLD`, re-run
+  `train_my_voice.py`, or set `SPEAKER_VERIFY=off`.
