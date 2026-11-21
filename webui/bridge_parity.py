@@ -1040,8 +1040,6 @@ class ParityMixin:
                 tts_engine.reset_clone()   # Tier 31: stops the old sample's voice process
                 self.save_settings({"avatar_voice_reference_path": voice_sample_path})
                 tts_engine.warm_up_clone()
-                from voice.speaker_id import speaker_verifier  # noqa: PLC0415
-                speaker_verifier.warm_up()   # Tier 32: a voiceprint for the new sample
                 note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"

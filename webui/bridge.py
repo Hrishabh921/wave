@@ -132,6 +132,7 @@ class WaveWebBridge(ParityMixin):
         if isinstance(saved, list) and any(isinstance(p, str) and p.strip() for p in saved):
             self._wake_phrases = [p.strip().lower() for p in saved if isinstance(p, str) and p.strip()]
         self._restore_voice_reference(settings)
+        speaker_verifier.warm_up()   # Tier 32: the owner's voiceprint (their voice training) before the mic starts
         self._skills = UserSkillLoader(os.path.join(config.DATA_DIR, "user_skills"))
         self._remote = None  # lazy: webui/bridge.py's own Tier-23 reuse, see _get_remote()
         # Mirrors MainWindow._start_reminder_worker(): a reminder set via
@@ -257,7 +258,6 @@ class WaveWebBridge(ParityMixin):
                 self.save_settings({"avatar_voice_reference_path": path})
             logger.info("Tier 25: restored voice-clone reference from a previous session.")
             tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
-            speaker_verifier.warm_up()   # Tier 32: the owner's voiceprint, from the same sample
         elif saved:
             logger.warning(f"Tier 25: previously-set voice-clone reference '{saved}' is gone - "
                            "falling back to edge-tts/Piper/Kokoro until 'Build avatar' is run again.")

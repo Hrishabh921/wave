@@ -227,6 +227,9 @@ class MainWindow(QMainWindow):
         # settings file for the avatar_* toggles) and before wave_start.pyw
         # calls should_start_hidden() right after this constructor returns.
         self._init_avatar()
+        # Tier 32: the owner's voiceprint (their voice training) before the mic starts.
+        from voice.speaker_id import speaker_verifier  # noqa: PLC0415
+        speaker_verifier.warm_up()
         if hasattr(self, "settings_panel") and hasattr(self.settings_panel, "_refresh_avatar_build_status"):
             self.settings_panel._refresh_avatar_build_status()
 
@@ -2536,8 +2539,6 @@ class MainWindow(QMainWindow):
                 self._persist_settings_key("avatar_voice_reference_path", ref_path)
             logger.info("Tier 25: restored voice-clone reference from a previous session.")
             tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
-            from voice.speaker_id import speaker_verifier  # noqa: PLC0415
-            speaker_verifier.warm_up()   # Tier 32: the owner's voiceprint, from the same sample
         elif saved_ref:
             logger.warning(
                 f"Tier 25: previously-set voice-clone reference '{saved_ref}' is gone - "
@@ -2608,8 +2609,6 @@ class MainWindow(QMainWindow):
                 # _init_avatar() above.
                 self._persist_settings_key("avatar_voice_reference_path", voice_sample_path)
                 tts_engine.warm_up_clone()
-                from voice.speaker_id import speaker_verifier  # noqa: PLC0415
-                speaker_verifier.warm_up()   # Tier 32: a voiceprint for the new sample
                 voice_note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 voice_note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"

@@ -17,6 +17,14 @@ _TEST_DATA = tempfile.mkdtemp(prefix="wave_tests_")
 os.environ.setdefault("TTFA_LOG_PATH", os.path.join(_TEST_DATA, "ttfa.jsonl"))
 atexit.register(shutil.rmtree, _TEST_DATA, ignore_errors=True)
 
+# Tier 32: the speaker check must never judge test audio against the
+# developer's own voiceprint (avatar_rig/voiceprint.npz, a real person's
+# voice training). tests/test_tier32_speaker_id.py turns it back on with its
+# own temporary voiceprint.
+os.environ.setdefault("SPEAKER_VERIFY", "off")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.SPEAKER_VERIFY = "off"
+
 
 def make_tmpdir(testcase) -> str:
     d = tempfile.mkdtemp(prefix="wave_p4_")

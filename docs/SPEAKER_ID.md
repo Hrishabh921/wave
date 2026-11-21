@@ -9,22 +9,19 @@ Whisper CPU spent on them, nothing they said written to the log.
 
 ## How it decides
 
-- **The voiceprint** comes from the owner's voice training through this PC's mic (see
-  below) and from the voice sample the owner gave for Wave's cloned voice
-  (Settings → Avatar → Build avatar; `TTS_CLONE_REFERENCE_PATH`,
-  `avatar_rig/voice_reference.wav`). It holds three averages of that sample: as
-  recorded, and as if heard across a room by a laptop mic (mild and harsh: reverb, band
-  limit, noise). The sample was a phone recording; Wave hears through the PC's mic.
-- **It learns.** An utterance that clearly is the owner (score ≥ 0.40) adds itself to
-  the voiceprint (the newest 40 are kept), so Wave gets better at the owner's voice as
-  heard through this mic. Never while Wave itself is talking - its cloned voice sounds
-  like the owner.
-- **A score** is the best cosine similarity to any of those averages (or to what was
-  learned). At or above `SPEAKER_VERIFY_THRESHOLD` (0.28) it's the owner.
+- **The voiceprint is your voice training through this PC's mic** -
+  `scripts/train_my_voice.py`, ~30 s of you reading through the mic Wave listens with -
+  plus what Wave learns from your own commands. **Until you've trained once, the check
+  is off** and every voice counts, as before.
+- **It learns.** An utterance that clearly is you (score ≥ 0.40) is added (the newest 40
+  are kept), so Wave keeps up with your voice as it hears it. Never while Wave itself is
+  talking.
+- **A score** is the cosine similarity to the training (or to what was learned). At or
+  above `SPEAKER_VERIFY_THRESHOLD` (0.35) it's you.
 - **Short utterances (< 1 s) aren't checked** - a voice says too little in that time -
   so a lone "Baby" always wakes Wave. Whatever follows is checked.
-- **Not while Wave is talking**: its echo is in that audio, and the owner's "ruk jao"
-  must always get through. The score is still logged.
+- **Not while Wave is talking**: its echo is in that audio, and your "ruk jao" must
+  always get through. The score is still logged.
 
 The log shows every decision:
 
@@ -32,6 +29,16 @@ The log shows every decision:
 Speaker check: 0.62 (you)
 Not your voice (speaker score 0.12) - ignored, not transcribed
 ```
+
+### Why not the cloned voice's sample? (Tier 32c)
+
+Tier 32 first built the voiceprint from the voice sample Wave's cloned voice uses
+(`TTS_CLONE_REFERENCE_PATH`). Two things are wrong with that: the sample needn't be the
+owner at all (on the owner's laptop it was someone else's WhatsApp voice note), and even
+a phone recording of the owner sounds like a stranger through a laptop mic - the owner's
+mic voice scored only **0.16-0.19** against it, under the threshold, so Wave would have
+ignored its own owner. The speaker check now ignores the sample completely; it scores
+**at most 0.22** against the trained voiceprint, i.e. it's rejected like any other voice.
 
 ## Setting it up
 
@@ -41,67 +48,49 @@ wave_env\Scripts\python scripts\download_speaker_model.py
 wave_env\Scripts\python scripts\train_my_voice.py
 ```
 
-### Voice training through this PC's mic (Tier 32b) - do this
-
-The voice sample is usually a phone recording, and a phone and a laptop mic hear the
-same person very differently. On the owner's laptop their own voice through the mic
-scored only **0.16-0.19** against their WhatsApp sample - below the 0.28 threshold, so
-Wave would have ignored its owner. `scripts/train_my_voice.py` fixes that: Wave closed,
-TV off, it beeps once and records you reading five lines (30 s), beeps twice and
-records 20 s of a video with you silent (to see how other voices score through the same
-mic), and beeps three times when done. Pieces that don't sound like the rest are
-dropped, and nothing is saved if the recording isn't one clear voice. After training,
-the owner's held-out 1.5 s pieces scored **0.71-0.74**. `--no-video` skips the video
-part; `--reset` forgets the training and everything learned.
-
-The video part only helps when the video plays on another device (a TV, a phone): this
-laptop's mic array removes the laptop's own speaker sound. `--video-only` measures just
-that, any time, without touching the training.
-
-Measured on the owner's laptop after training (a video on a phone, owner silent, 12
-pieces of 1.5 s): other voices scored **at most 0.21** (mean 0.15) - also against the
-mic training alone, so sharing the room and the mic doesn't make voices match - while
-the owner scored **0.71-0.74**. That laptop's `.env` has `SPEAKER_VERIFY_THRESHOLD=0.35`:
-well above the video, well below the owner. The 0.28 default stays for voiceprints
-without mic training.
+`train_my_voice.py` (Wave closed, TV off): one beep - read the five lines it prints
+(30 s); two beeps - stop talking and play a video (20 s, it shows how other voices score
+through the same mic); three beeps - done. Pieces that don't sound like the rest are
+dropped, and nothing is saved unless the recording is one clear voice. `--no-video`
+skips the video part, `--video-only` just measures a video without touching the
+training, `--reset` forgets the training and everything learned. Play the video on
+another device (a TV, a phone): this laptop's mic array removes the laptop's own speaker
+sound.
 
 The model is 3D-Speaker's CAM++ (`iic/speech_campplus_sv_zh_en_16k-common_advanced`,
 Chinese+English, 16 kHz, 192-d; the 3D-Speaker project is Apache-2.0) as exported by
 sherpa-onnx, ~27 MB, checked against a pinned SHA-256. It runs with onnxruntime (no
 torch in Wave's process) and takes ~30 ms per utterance on the CPU. The voiceprint is
-built once (~3 s) and cached in `avatar_rig/voiceprint.npz`; a new voice sample rebuilds
-it, and deleting the file forgets what was learned.
+`avatar_rig/voiceprint.npz` (git-ignored, like the rest of `avatar_rig/`).
 
 | `.env` | default | |
 |---|---|---|
-| `SPEAKER_VERIFY` | `auto` | on when the model and a voice sample are there; `off` = every voice counts |
-| `SPEAKER_VERIFY_THRESHOLD` | `0.28` | lower lets more through (you *and* others), higher is stricter |
+| `SPEAKER_VERIFY` | `auto` | on when the model and your voice training are there; `off` = every voice counts |
+| `SPEAKER_VERIFY_THRESHOLD` | `0.35` | lower lets more through (you *and* others), higher is stricter |
 | `SPEAKER_MODEL_PATH` | blank | blank = `voice_models/speaker/<model>` |
 
-## Calibration
+## Measured
 
-On the owner's 21 s sample (10 s enrolled, the rest cut into pieces) against 40 clips
-from 10 other voices (edge-tts: Indian English, Hindi, US, UK, AU; male and female),
-each also through the simulated room:
+On the owner's laptop (Intel Smart Sound mic array), after voice training:
 
-| | owner (lowest) | other voices (highest) |
-|---|---|---|
-| 1 s, harsh room | 0.29 | 0.28 |
-| 1.5 s, harsh room | 0.48 | 0.25 |
-| clean | ≥ 0.61 | 0.15 |
+| | score |
+|---|---|
+| the owner, held-out 1.5 s pieces of the training recording | 0.71-0.74 |
+| a video playing on a phone in the room (owner silent), 12 pieces | at most 0.21, mean 0.15 |
+| the cloned voice's sample (someone else's voice note) | at most 0.22 |
 
-Below 1 s the owner's pieces scored anywhere from -0.1 to 0.5 - hence no check there.
-The other model tried (WeSpeaker ResNet34) fell apart through the simulated room
-(owner down to -0.01) and was dropped. Playing clips through the laptop's speaker to its
-own mic wasn't possible as a test: this laptop's mic array removes its own speaker's
-sound.
+Sharing the room and the mic doesn't make voices match: the video scored the same 0.21
+against the training alone. The model choice came from an earlier synthetic calibration
+(the owner's sample against 10 edge-tts voices through a simulated room): CAM++ held up
+there, while WeSpeaker's ResNet34 fell apart (the owner down to -0.01). Pieces under 1 s
+scored anywhere from -0.1 to 0.5 - hence no check below 1 s.
 
 ## Limits
 
-- **Wave's own cloned voice scores like the owner** (0.56-0.72), so this can't stop Wave
-  hearing itself - echo cancellation and the "Wave is talking" rules still do that.
+- This doesn't stop Wave hearing its own voice - echo cancellation and the "Wave is
+  talking" rules still do that.
 - A TV saying a short "baby" can still wake Wave (under 1 s isn't checked); what it says
   next is dropped, and Wave dozes off again.
-- If Wave starts ignoring you or answering others, the log lines above show the
-  scores - adjust `SPEAKER_VERIFY_THRESHOLD`, re-run `train_my_voice.py`, or set
-  `SPEAKER_VERIFY=off`.
+- If Wave starts ignoring you or answering others, the log lines above show the scores -
+  adjust `SPEAKER_VERIFY_THRESHOLD`, re-run `train_my_voice.py` (e.g. after moving to a
+  different mic or headset), or set `SPEAKER_VERIFY=off`.

@@ -1,11 +1,11 @@
 """
 scripts/train_my_voice.py — Tier 32b: teach Wave your voice through THIS PC's mic.
 
-Wave's speaker check (voice/speaker_id.py) starts from the voice sample you gave
-for the cloned voice - usually a phone recording, which sounds different from how
-this PC's mic hears you (in the first live test the owner's lines scored 0.19-0.24
-against it, under the 0.28 threshold). This records you reading a few lines through
-the same mic Wave listens with, and adds that to the voiceprint.
+Wave's speaker check (voice/speaker_id.py) only lets through the voice it was
+trained on here: this records you reading a few lines through the same mic Wave
+listens with, and that becomes the voiceprint (Tier 32c: the cloned voice's sample
+isn't used - it needn't be you, and a phone recording of you scored only 0.16-0.19
+through a laptop mic). Until you've done this once, the speaker check stays off.
 
     python scripts/train_my_voice.py              # you (30 s), then a video (20 s)
     python scripts/train_my_voice.py --no-video   # just you
@@ -70,7 +70,9 @@ def speech_only(x):
         return np.zeros(0, np.float32), 0.0
     frames = x[: n * frame].reshape(n, frame)
     rms = np.sqrt(np.mean(frames ** 2, axis=1))
-    floor = float(np.percentile(rms, 20))
+    # the quietest 5% of frames is the room (someone reading may pause for
+    # well under 20% of the time, so a higher percentile can land in speech)
+    floor = float(np.percentile(rms, 5))
     keep = rms > max(3.0 * floor, 0.004)
     # 150 ms of hangover either side so words aren't clipped
     hang = np.convolve(keep.astype(int), np.ones(11, int), "same") > 0
@@ -123,7 +125,7 @@ def main(argv=None) -> int:
         if os.path.exists(path):
             os.remove(path)
         verifier.reset()
-        print("Voice training forgotten (the voiceprint is rebuilt from the voice sample on next use).")
+        print("Voice training forgotten - the speaker check is off until you train again.")
         return 0
 
     keep_full_speed()
@@ -166,17 +168,11 @@ def main(argv=None) -> int:
         print("The recording doesn't sound like one voice (too much noise, or someone/something else talking) "
               "- nothing saved. Try again with the room quiet.")
         return 3
-    before = verifier.sample_scores(kept)
-    if before is not None:
-        print(f"your mic voice vs the voice sample alone: mean {np.mean(before):.2f}, min {min(before):.2f} "
-              f"(threshold {verifier.threshold():.2f})")
-
     # How the owner's own short commands would score: train on the first two
     # thirds of the speech, score 1.5 s pieces of the last third.
     cut = int(len(voiced) * 2 / 3)
     train_part = unit(np.mean(verifier.window_embeddings(voiced[:cut]), axis=0))
-    targets = list(verifier._centroids) if verifier._centroids is not None else []
-    own_scores = [max(float(e @ t) for t in targets + [train_part])
+    own_scores = [float(e @ train_part)
                   for e in (verifier.window_embeddings(p, seconds=1.5, hop=1.5)[0] for p in pieces(voiced[cut:], 1.5))]
     if own_scores:
         print(f"your 1.5 s pieces (held out) would score: min {min(own_scores):.2f}, "

@@ -3,13 +3,19 @@ tests/test_tier32_speaker_id.py — Tier 32: only the owner's voice counts.
 
 In testing, a video's "Say something." was taken for a command and Wave began
 talking on its own. voice/speaker_id.py compares every utterance's voice with
-a voiceprint built from the owner's voice sample, and voice/stt.py drops other
-voices before they're transcribed. These tests use a stand-in embedder (a
-voice is a pitch here); one smoke test runs the real model when it's present.
+the owner's voiceprint - their voice training through this PC's mic
+(scripts/train_my_voice.py) plus what Wave learns from their commands - and
+voice/stt.py drops other voices before they're transcribed. Tier 32c: the
+cloned voice's sample is never used (on the owner's laptop it was someone
+else's voice). These tests use a stand-in embedder (a voice is a pitch here);
+one smoke test runs the real model when it's present.
 
     python -m unittest discover -s tests -p "test_tier32_speaker_id.py"
 """
+import contextlib
 import hashlib
+import importlib.util
+import io
 import os
 import shutil
 import tempfile
@@ -43,6 +49,13 @@ def pcm(x):
     return (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
 
 
+def load_script(name):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(S.ROOT, "scripts", name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class PitchEmbedder:
     """Stand-in for the speaker model: one dimension per 100 Hz band of the
     loudest frequency, so the same pitch matches and different ones don't."""
@@ -59,81 +72,93 @@ class PitchEmbedder:
         return emb
 
 
+OWNER, OTHER, CLONE_SAMPLE = 220, 650, 880   # pitches standing in for voices
+
+
 class _Base(unittest.TestCase):
+    """A verifier trained on the owner's voice (220 Hz), with a cloned-voice
+    sample of SOMEONE ELSE (880 Hz) configured - as on the owner's laptop."""
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="wave_speaker_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.sample = os.path.join(self.tmp, "voice_reference.wav")
-        sf.write(self.sample, tone(220, 6.0), RATE)
+        sf.write(self.sample, tone(CLONE_SAMPLE, 6.0), RATE)
         self.voiceprint = os.path.join(self.tmp, "voiceprint.npz")
         self.embedder = PitchEmbedder()
         patcher = mock.patch.multiple(sid.config, TTS_CLONE_REFERENCE_PATH=self.sample, SPEAKER_VERIFY="auto",
-                                      SPEAKER_VERIFY_THRESHOLD=0.28)
+                                      SPEAKER_VERIFY_THRESHOLD=0.35)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.v = self._verifier()
+        self.v.set_training(self.v.window_embeddings(tone(OWNER, 10.0, seed=1)))
 
-    def _verifier(self):
+    def _verifier(self, voiceprint=None):
         return sid.SpeakerVerifier(model_path=os.path.join(self.tmp, "none.onnx"),
-                                   voiceprint_path=self.voiceprint, embedder=self.embedder)
+                                   voiceprint_path=voiceprint or self.voiceprint, embedder=self.embedder)
 
 
 class VoiceprintTests(_Base):
-    def test_it_is_built_from_the_sample_in_three_conditions_and_saved(self):
-        self.assertTrue(self.v.ready())
-        self.assertEqual(self.v._centroids.shape[0], 3)
-        self.assertTrue(os.path.isfile(self.voiceprint))
+    def test_without_voice_training_the_check_is_off(self):
+        untrained = self._verifier(os.path.join(self.tmp, "untrained.npz"))
+        self.assertFalse(untrained.ready())
+        self.assertIsNone(untrained.check(pcm(tone(OTHER, 2.0))))
 
-    def test_a_saved_voiceprint_is_reused_without_recomputing(self):
-        self.v.ready()
+    def test_the_cloned_voices_sample_is_never_used(self):
+        """On the owner's laptop the sample was someone else's voice note."""
+        self.assertFalse(self.v.check(pcm(tone(CLONE_SAMPLE, 2.0, seed=2))).is_owner)
+        self.assertTrue(self.v.check(pcm(tone(OWNER, 2.0, seed=3))).is_owner)
+
+    def test_the_training_is_saved_and_reloaded_without_recomputing(self):
         again = self._verifier()
         before = self.embedder.calls
         self.assertTrue(again.ready())
         self.assertEqual(self.embedder.calls, before)
-        np.testing.assert_allclose(again._centroids, self.v._centroids)
+        self.assertEqual(len(again._mic), len(self.v._mic))
 
-    def test_a_changed_voice_sample_gets_a_new_voiceprint(self):
-        self.v.ready()
-        sf.write(self.sample, tone(880, 6.0), RATE)
-        stamp = os.path.getmtime(self.sample) + 10
-        os.utime(self.sample, (stamp, stamp))
-        self.assertTrue(self.v.ready())
-        self.assertTrue(self.v.check(pcm(tone(880, 2.0, seed=3))).is_owner)
-        self.assertFalse(self.v.check(pcm(tone(220, 2.0, seed=4))).is_owner)
+    def test_an_older_voiceprint_keeps_its_training_and_drops_the_sample_part(self):
+        old = os.path.join(self.tmp, "old.npz")
+        mic = np.stack(self.v.window_embeddings(tone(OWNER, 6.0)))
+        np.savez(old, sample_key=np.array(["x"]), centroids=np.stack([PitchEmbedder()(tone(CLONE_SAMPLE, 2.0))]),
+                 mic=mic, learned=np.zeros((0, 64), np.float32))
+        verifier = self._verifier(old)
+        self.assertTrue(verifier.check(pcm(tone(OWNER, 2.0))).is_owner)
+        self.assertFalse(verifier.check(pcm(tone(CLONE_SAMPLE, 2.0))).is_owner)
+        verifier.learn(verifier.check(pcm(tone(OWNER, 2.0))))          # saves in the new format
+        with np.load(old) as data:
+            self.assertNotIn("centroids", data.files)
 
 
 class CheckTests(_Base):
     def test_the_owners_voice_passes_and_another_voice_does_not(self):
-        owner = self.v.check(pcm(tone(220, 2.0, seed=1)))
-        other = self.v.check(pcm(tone(650, 2.0, seed=2)))
+        owner = self.v.check(pcm(tone(OWNER, 2.0, seed=4)))
+        other = self.v.check(pcm(tone(OTHER, 2.0, seed=5)))
         self.assertTrue(owner.is_owner)
         self.assertGreater(owner.score, 0.9)
         self.assertFalse(other.is_owner)
-        self.assertLess(other.score, 0.28)
+        self.assertLess(other.score, 0.35)
 
     def test_under_a_second_is_not_judged(self):
-        self.assertIsNone(self.v.check(pcm(tone(650, 0.8))))
+        self.assertIsNone(self.v.check(pcm(tone(OTHER, 0.8))))
 
     def test_other_sample_rates_are_resampled(self):
         t = np.arange(int(2.0 * 48000)) / 48000
-        x = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+        x = (0.5 * np.sin(2 * np.pi * OWNER * t)).astype(np.float32)
         self.assertTrue(self.v.check(pcm(x), 48000).is_owner)
 
-    def test_nothing_to_compare_with_means_no_verdict(self):
-        with mock.patch.object(sid.config, "TTS_CLONE_REFERENCE_PATH", ""):
-            self.assertIsNone(self._verifier().check(pcm(tone(650, 2.0))))
+    def test_turned_off_or_no_model_means_no_verdict(self):
         with mock.patch.object(sid.config, "SPEAKER_VERIFY", "off"):
-            self.assertIsNone(self._verifier().check(pcm(tone(650, 2.0))))
+            self.assertIsNone(self._verifier().check(pcm(tone(OTHER, 2.0))))
         no_model = sid.SpeakerVerifier(model_path=os.path.join(self.tmp, "missing.onnx"),
                                        voiceprint_path=self.voiceprint)
-        self.assertIsNone(no_model.check(pcm(tone(650, 2.0))))
+        self.assertIsNone(no_model.check(pcm(tone(OTHER, 2.0))))
 
     def test_a_model_file_that_isnt_the_pinned_one_is_refused(self):
         fake = os.path.join(self.tmp, "fake.onnx")
         with open(fake, "wb") as f:
             f.write(b"not the model")
         verifier = sid.SpeakerVerifier(model_path=fake, voiceprint_path=self.voiceprint)
-        self.assertIsNone(verifier.check(pcm(tone(220, 2.0))))
+        self.assertIsNone(verifier.check(pcm(tone(OWNER, 2.0))))
         self.assertTrue(verifier._load_failed)
 
     def test_the_threshold_comes_from_the_config(self):
@@ -143,110 +168,85 @@ class CheckTests(_Base):
 
 class LearningTests(_Base):
     def test_a_clearly_owner_utterance_is_learned_and_saved(self):
-        check = self.v.check(pcm(tone(220, 2.0, seed=5)))
+        check = self.v.check(pcm(tone(OWNER, 2.0, seed=6)))
         self.assertTrue(self.v.learn(check))
-        self.assertEqual(len(self.v._learned), 1)
         again = self._verifier()
         again.ready()
         self.assertEqual(len(again._learned), 1)
-        self.assertEqual(len(again._targets()), 4)   # three centroids + what was learned
+        self.assertEqual(len(again._targets()), 2)   # the training + what was learned
 
     def test_a_doubtful_one_is_not(self):
         doubtful = sid.SpeakerCheck(sid.LEARN_SCORE - 0.01, True, np.ones(64, np.float32))
-        self.v.ready()
         self.assertFalse(self.v.learn(doubtful))
         self.assertFalse(self.v.learn(None))
         self.assertEqual(self.v._learned, [])
 
+    def test_nothing_is_learned_without_voice_training(self):
+        untrained = self._verifier(os.path.join(self.tmp, "untrained.npz"))
+        self.assertFalse(untrained.learn(sid.SpeakerCheck(0.9, True, np.ones(64, np.float32))))
+
     def test_only_the_newest_are_kept(self):
-        self.v.ready()
-        check = self.v.check(pcm(tone(220, 2.0, seed=6)))
+        check = self.v.check(pcm(tone(OWNER, 2.0, seed=7)))
         for _ in range(sid.MAX_LEARNED + 5):
             self.v.learn(check)
         self.assertEqual(len(self.v._learned), sid.MAX_LEARNED)
 
 
-class TrainingTests(_Base):
-    """Tier 32b: the owner's voice through this PC's mic (scripts/train_my_voice.py).
-    In the real test their mic voice scored only 0.16-0.19 against the
-    phone-recorded sample, and 0.71+ once trained."""
+class TrainingScriptTests(_Base):
+    """scripts/train_my_voice.py. On the owner's laptop: their mic voice
+    scored 0.16-0.19 against the (someone else's) sample, 0.71-0.74 once
+    trained; a video's voices at most 0.21 - hence the 0.35 threshold."""
 
-    def test_training_adds_the_mic_voice_and_is_saved(self):
-        self.v.ready()
-        mic_voice = tone(330, 10.0, seed=11)          # 'the owner, as this mic hears them'
-        self.assertFalse(self.v.check(pcm(tone(330, 2.0, seed=12))).is_owner)
-        self.v.set_training(self.v.window_embeddings(mic_voice))
-        self.assertTrue(self.v.check(pcm(tone(330, 2.0, seed=12))).is_owner)
-        again = self._verifier()
-        self.assertTrue(again.check(pcm(tone(330, 2.0, seed=13))).is_owner)
-        self.assertEqual(len(again._mic), len(self.v.window_embeddings(mic_voice)))
+    def setUp(self):
+        super().setUp()
+        self.script = load_script("train_my_voice")
 
-    def test_training_alone_is_enough_without_a_voice_sample(self):
-        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
-        with mock.patch.object(sid.config, "TTS_CLONE_REFERENCE_PATH", ""):
-            verifier = self._verifier()
-            self.assertTrue(verifier.ready())
-            self.assertTrue(verifier.check(pcm(tone(330, 2.0, seed=14))).is_owner)
-            self.assertFalse(verifier.check(pcm(tone(220, 2.0, seed=15))).is_owner)
+    def _main(self, args, recorded=None):
+        out = io.StringIO()
+        with mock.patch.object(self.script.speaker_id, "speaker_verifier", self.v), \
+                mock.patch.object(self.script, "record", side_effect=recorded or []), \
+                mock.patch.object(self.script, "beep"), mock.patch.object(self.script, "keep_full_speed"), \
+                mock.patch.object(self.v, "_ready_model", return_value=True), contextlib.redirect_stdout(out):
+            code = self.script.main(args)
+        return code, out.getvalue()
 
-    def test_a_new_voice_sample_keeps_the_training(self):
-        self.v.ready()
-        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
-        sf.write(self.sample, tone(880, 6.0), RATE)
-        stamp = os.path.getmtime(self.sample) + 10
-        os.utime(self.sample, (stamp, stamp))
-        self.assertTrue(self.v.ready())
-        self.assertTrue(self.v.check(pcm(tone(880, 2.0, seed=16))).is_owner)
-        self.assertTrue(self.v.check(pcm(tone(330, 2.0, seed=17))).is_owner)
-
-    def test_sample_scores_compare_against_the_sample_alone(self):
-        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
-        scores = self.v.sample_scores(self.v.window_embeddings(tone(330, 6.0)))
-        self.assertTrue(scores and max(scores) < 0.28)
-        with mock.patch.object(sid.config, "TTS_CLONE_REFERENCE_PATH", ""):
-            self.assertIsNone(self._verifier().sample_scores([np.ones(64, np.float32)]))
-
-    def test_the_training_script_finds_speech_and_can_forget_everything(self):
-        import importlib.util  # noqa: PLC0415
-        spec = importlib.util.spec_from_file_location("train_my_voice",
-                                                      os.path.join(S.ROOT, "scripts", "train_my_voice.py"))
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)
+    def test_speech_is_found_between_the_pauses(self):
         quiet = np.zeros(RATE, np.float32)
-        x = np.concatenate([quiet, tone(330, 3.0), quiet, tone(330, 2.0), quiet])
-        voiced, peak = script.speech_only(x)
+        voiced, peak = self.script.speech_only(np.concatenate([quiet, tone(330, 3.0), quiet, tone(330, 2.0), quiet]))
         # the 5 s of speech plus ~150 ms kept either side of each stretch
         self.assertGreaterEqual(len(voiced) / RATE, 5.0)
         self.assertLessEqual(len(voiced) / RATE, 6.0)
         self.assertGreater(peak, 0.1)
-        self.v.ready()
-        self.assertTrue(os.path.isfile(self.voiceprint))
-        with mock.patch.object(script.speaker_id, "speaker_verifier", self.v):
-            self.assertEqual(script.main(["--reset"]), 0)
-        self.assertFalse(os.path.exists(self.voiceprint))
+
+    def test_a_recording_of_the_owner_becomes_the_training(self):
+        quiet = np.zeros(RATE // 2, np.float32)
+        you = np.concatenate([np.concatenate([tone(330, 2.5, seed=i), quiet]) for i in range(8)])
+        code, out = self._main(["--no-video"], recorded=[you])
+        self.assertEqual(code, 0, out)
+        self.assertIn("saved:", out)
+        self.assertTrue(self._verifier().check(pcm(tone(330, 2.0, seed=20))).is_owner)
+        self.assertFalse(self._verifier().check(pcm(tone(OWNER, 2.0, seed=21))).is_owner)
+
+    def test_too_little_speech_saves_nothing(self):
+        code, out = self._main(["--no-video"], recorded=[np.zeros(RATE * 30, np.float32)])
+        self.assertEqual(code, 2)
+        self.assertTrue(self._verifier().check(pcm(tone(OWNER, 2.0))).is_owner)   # the old training stays
 
     def test_video_only_measures_other_voices_without_training(self):
-        """How the owner's laptop was tuned: a video's voices scored at most
-        0.21 against the trained voiceprint (the owner 0.71+) - 0.35 in .env."""
-        import contextlib  # noqa: PLC0415
-        import importlib.util  # noqa: PLC0415
-        import io  # noqa: PLC0415
-        spec = importlib.util.spec_from_file_location("train_my_voice",
-                                                      os.path.join(S.ROOT, "scripts", "train_my_voice.py"))
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)
-        self.v.set_training(self.v.window_embeddings(tone(330, 10.0)))
-        trained = len(self.v._mic)
         quiet = np.zeros(RATE, np.float32)
-        video = np.concatenate([quiet, tone(650, 3.0), quiet, tone(650, 3.0), quiet])   # someone else talking
-        out = io.StringIO()
-        with mock.patch.object(script.speaker_id, "speaker_verifier", self.v), \
-                mock.patch.object(script, "record", return_value=video), \
-                mock.patch.object(script, "beep"), mock.patch.object(script, "keep_full_speed"), \
-                mock.patch.object(self.v, "_ready_model", return_value=True), contextlib.redirect_stdout(out):
-            self.assertEqual(script.main(["--video-only", "--video-seconds", "6"]), 0)
-        self.assertIn("other voices score: max", out.getvalue())
+        video = np.concatenate([quiet, tone(OTHER, 3.0), quiet, tone(OTHER, 3.0), quiet])   # someone else
+        trained = len(self.v._mic)
+        code, out = self._main(["--video-only", "--video-seconds", "6"], recorded=[video])
+        self.assertEqual(code, 0)
+        self.assertIn("other voices score: max", out)
         self.assertEqual(len(self.v._mic), trained)
+
+    def test_reset_forgets_the_training(self):
+        self.assertTrue(os.path.isfile(self.voiceprint))
+        code, out = self._main(["--reset"])
+        self.assertEqual(code, 0)
+        self.assertFalse(os.path.exists(self.voiceprint))
+        self.assertIsNone(self._verifier().check(pcm(tone(OWNER, 2.0))))
 
 
 class _Audio:
@@ -269,7 +269,7 @@ class SttTests(unittest.TestCase):
         with mock.patch.object(sid.speaker_verifier, "check", return_value=verdict), \
                 mock.patch.object(sid.speaker_verifier, "learn") as learn, \
                 mock.patch.object(self.stt, "_recognize", return_value=recognized) as recognize:
-            out = self.stt._gate_and_recognize(_Audio(tone(220, 2.0)), None, tts_overlap, {})
+            out = self.stt._gate_and_recognize(_Audio(tone(OWNER, 2.0)), None, tts_overlap, {})
         return out, recognize, learn
 
     def test_another_voice_is_dropped_before_transcription(self):
@@ -298,14 +298,14 @@ class SttTests(unittest.TestCase):
         self.assertIsNone(out.speaker_score)
         learn.assert_not_called()
 
+    def test_the_test_suite_never_uses_the_real_voiceprint(self):
+        """tests/_phase4_support.py turns the check off for every other test."""
+        self.assertEqual(sid.config.SPEAKER_VERIFY, "off")
+
 
 class DownloadScriptTests(unittest.TestCase):
     def test_it_installs_only_a_file_with_the_pinned_checksum(self):
-        import importlib.util  # noqa: PLC0415
-        spec = importlib.util.spec_from_file_location(
-            "download_speaker_model", os.path.join(S.ROOT, "scripts", "download_speaker_model.py"))
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)
+        script = load_script("download_speaker_model")
         tmp = tempfile.mkdtemp(prefix="wave_speaker_dl_")
         self.addCleanup(shutil.rmtree, tmp, True)
         target = os.path.join(tmp, "model.onnx")
