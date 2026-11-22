@@ -34,6 +34,7 @@ from ui.skills_panel import SkillsPanel
 from ui.performance_panel import PerformancePanel
 from ui.toast import *
 from ui.worker_pool import *
+from voice.tts import CLONE_VOICE_ID
 
 
 def get_system_volume():
@@ -2337,7 +2338,7 @@ class MainWindow(QMainWindow):
                 data["redact_secrets"] = sp.cb_redact_secrets.isChecked()
             # ── Voice settings ──
             if hasattr(sp, "tts_combo"):
-                data["tts_voice"] = sp.tts_combo.currentText()
+                data["tts_voice"] = sp.current_tts_voice_id()   # Tier 33: the id, not the label
             if hasattr(sp, "rate_slider"):
                 data["tts_rate"] = sp.rate_slider.value()
             if hasattr(sp, "tts_vol_slider"):
@@ -2407,7 +2408,7 @@ class MainWindow(QMainWindow):
                 # so we don't pop the "type a custom phrase" dialog on
                 # every single startup.
                 if "tts_voice" in data and hasattr(sp, "tts_combo"):
-                    sp.tts_combo.setCurrentText(data["tts_voice"])
+                    sp.select_tts_voice(data["tts_voice"])
                 if "tts_rate" in data and hasattr(sp, "rate_slider"):
                     sp.rate_slider.setValue(data["tts_rate"])
                 if "tts_volume" in data and hasattr(sp, "tts_vol_slider"):
@@ -2539,6 +2540,7 @@ class MainWindow(QMainWindow):
                 self._persist_settings_key("avatar_voice_reference_path", ref_path)
             logger.info("Tier 25: restored voice-clone reference from a previous session.")
             tts_engine.warm_up_clone()   # Tier 31: load the model before the first reply
+            self._refresh_clone_voice_entry()
         elif saved_ref:
             logger.warning(
                 f"Tier 25: previously-set voice-clone reference '{saved_ref}' is gone - "
@@ -2608,11 +2610,21 @@ class MainWindow(QMainWindow):
                 # to edge-tts the next time Wave starts. Restored by
                 # _init_avatar() above.
                 self._persist_settings_key("avatar_voice_reference_path", voice_sample_path)
-                tts_engine.warm_up_clone()
+                # Tier 33: a sample picked here means "speak in this voice" -
+                # it becomes the voice in Settings -> Voice (and loads now).
+                tts_engine.set_voice(CLONE_VOICE_ID)
+                self._refresh_clone_voice_entry()
                 voice_note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 voice_note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"
         return "Avatar ban gaya aur dikhayi de raha hai." + voice_note
+
+    def _refresh_clone_voice_entry(self) -> None:
+        """Tier 33: Settings -> Voice names the cloned voice after its
+        sample - show the sample that's set now."""
+        panel = getattr(self, "settings_panel", None)
+        if panel is not None and hasattr(panel, "refresh_clone_voice"):
+            panel.refresh_clone_voice()
 
     def _persist_settings_key(self, key: str, value) -> None:
         """Updates one key in SETTINGS_FILE without needing settings_panel's

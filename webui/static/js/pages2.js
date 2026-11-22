@@ -505,7 +505,14 @@
         "Swara — Hindi (Female)": "hi-IN-SwaraNeural", "Madhur — Hindi (Male)": "hi-IN-MadhurNeural",
         "Aria — English US (Female)": "en-US-AriaNeural", "Guy — English US (Male)": "en-US-GuyNeural",
     };
-    const WAKE_PRESETS = { "Hey Wave": ["hey wave"], "Hello Wave": ["hello wave"], "Okay Wave": ["okay wave", "ok wave"], "Wave": ["wave"] };
+    // Tier 33: the cloned voice - named after its voice sample ("r1 — Cloned
+    // voice") - comes first, and is the default whenever a sample is set.
+    const CLONE_ID = "clone";
+    let cloneLabel = "Cloned voice";
+    const voiceLabels = () => [cloneLabel].concat(Object.keys(TTS_VOICES));
+    const voiceId = (label) => (label === cloneLabel ? CLONE_ID : TTS_VOICES[label]);
+    const voiceLabel = (id) => (id === CLONE_ID ? cloneLabel : Object.keys(TTS_VOICES).find((k) => TTS_VOICES[k] === id));
+    const WAKE_PRESETS ={ "Hey Wave": ["hey wave"], "Hello Wave": ["hello wave"], "Okay Wave": ["okay wave", "ok wave"], "Wave": ["wave"] };
     const WAKE_ENGINES = { "Automatic": "auto", "On-device model (openWakeWord)": "openwakeword", "Speech recognition only": "transcript" };
     const STT_LANGS = ["en-US", "en-IN", "hi-IN", "es-ES", "fr-FR", "de-DE"];
     App.WAKE_PRESETS = WAKE_PRESETS;
@@ -601,7 +608,8 @@
     }
 
     function voice() {
-        S.tts = new W.Combo(Object.keys(TTS_VOICES), Object.keys(TTS_VOICES)[0], (label) => call("apply_setting", "tts_voice", TTS_VOICES[label]));
+        S.tts = new W.Combo(voiceLabels(), cloneLabel, (label) => call("apply_setting", "tts_voice", voiceId(label)).then(refreshCloneStatus));
+        S.ttsStatus = el("div", { class: "wrap", style: { color: "var(--text-muted)", fontSize: "11.5px", lineHeight: 1.33 } }, "");
         S.rate = new W.Slider(50, 200, 108, (v) => call("apply_setting", "tts_rate", v));
         S.ttsVol = new W.Slider(0, 100, 100, (v) => call("apply_setting", "tts_volume", v));
         S.wake = new W.Combo(Object.keys(WAKE_PRESETS).concat(["Custom..."]), "Hey Wave", (label) => onWakeWordChange(label));
@@ -614,7 +622,7 @@
         S.localVoiceStatus = el("div", { class: "wrap", style: { color: "var(--text-muted)", fontSize: "11.5px", lineHeight: 1.33 } }, "");
         return sp([
             heading("VOICE SETTINGS"),
-            fpanel([formLbl("TTS Voice:"), S.tts.root, divider(), formLbl("Speech Rate:"), S.rate.root, divider(), formLbl("TTS Volume:"), S.ttsVol.root,
+            fpanel([formLbl("TTS Voice:"), S.tts.root, S.ttsStatus, divider(), formLbl("Speech Rate:"), S.rate.root, divider(), formLbl("TTS Volume:"), S.ttsVol.root,
                 divider(), formLbl("Wake Word:"), S.wake.root, S.wakeWords, formLbl("Wake Word Detection:"), S.wakeEngine.root, formLbl("Wake Sensitivity:"), S.wakeSens.root, S.wakeStatus,
                 divider(), formLbl("Speech Recognition Language:"), S.stt.root, divider(), S.localVoice.root, S.localVoiceStatus]),
             stretch(),
@@ -659,11 +667,33 @@
         showWakeWords();
         return call("get_wake_status").then((r) => { if (r && r.ok && S.wakeStatus) S.wakeStatus.textContent = r.text; });
     }
+    // Tier 33: the cloned voice's entry follows its voice sample's name.
+    function renameClone(label) {
+        if (!label || label === cloneLabel) return;
+        const current = S.tts.value;
+        cloneLabel = label;
+        S.tts.setItems(voiceLabels());   // the old clone entry -> the new one
+        if (current !== undefined && S.tts.items.includes(current)) S.tts.setValue(current, false);
+    }
+    // SettingsPanel.refresh_clone_status(): the line under the voice picker,
+    // checked again every few seconds while the cloned voice is loading.
+    let cloneStatusTimer = null;
+    function refreshCloneStatus() {
+        return call("get_clone_status").then((r) => {
+            if (!r || !r.ok || !S.ttsStatus) return;
+            renameClone(r.clone_label);
+            S.ttsStatus.textContent = r.text || "";
+            if (r.loading && !cloneStatusTimer) cloneStatusTimer = setTimeout(() => { cloneStatusTimer = null; refreshCloneStatus(); }, 3000);
+        });
+    }
+    App.refreshCloneStatus = refreshCloneStatus;
     async function loadVoiceValues() {
         const r = await call("get_voice_settings");
         if (!r || !r.ok) return;
-        const label = Object.keys(TTS_VOICES).find((k) => TTS_VOICES[k] === r.voice) || Object.keys(TTS_VOICES)[0];
-        S.tts.setValue(label, false);
+        renameClone(r.clone_label);
+        S.tts.setValue(voiceLabel(r.voice) || Object.keys(TTS_VOICES)[0], false);
+        S.ttsStatus.textContent = r.clone_status || "";
+        if (r.clone_loading) refreshCloneStatus();
         S.rate.set(r.rate_slider, false); S.ttsVol.set(r.volume_slider, false);
         S.wakeEngine.setValue(Object.keys(WAKE_ENGINES).find((k) => WAKE_ENGINES[k] === r.wake_engine) || "Automatic", false);
         S.wakeSens.set(r.wake_sensitivity, false);
@@ -690,6 +720,7 @@
             status.textContent = result;
             toast(result, String(result).includes("ban gaya") ? "success" : "error");
             if (r && r.ok && window.WaveAvatar && WaveAvatar.reload) WaveAvatar.reload();
+            if (r && r.ok && voiceIn.value.trim()) loadVoiceValues();   // Tier 33: the new sample is the voice now
         });
         const browse = (input, kind) => btn("Browse…", "action", async () => { const r = await call("pick_file", kind); if (r && r.ok && r.path) input.value = r.path; });
         // Tier 27: LivePortrait clips for the Dodo page (avatar/live.py)
@@ -883,7 +914,7 @@
             clipboard_monitoring: S.clipboard.checked, screen_capture_allowed: S.screen.checked,
             save_chat_history: S.chatHistory.checked, notifications_enabled: S.notifications.checked,
             usage_stats_enabled: S.usageStats.checked, security_mode: S.secMode.value, redact_secrets: S.redact.checked,
-            tts_voice: S.tts.value, tts_rate: S.rate.value, tts_volume: S.ttsVol.value,
+            tts_voice: voiceId(S.tts.value) || CLONE_ID, tts_rate: S.rate.value, tts_volume: S.ttsVol.value,
             wake_word_label: S.wake.value, wake_phrases: App.state.wakePhrases, stt_lang: S.stt.value,
             wake_engine: S.wakeEngine.value, tts_local_auto_download: S.localVoice.checked,
             remote_dashboard_enabled: S.remoteEnable.checked, remote_dashboard_port: Number(S.remotePort.value) || 8787,
@@ -910,7 +941,15 @@
         S.usageStats.set(!!d.usage_stats_enabled, true);
         if (d.security_mode) S.secMode.setValue(d.security_mode, true);
         if ("redact_secrets" in d) S.redact.set(d.redact_secrets, true);
-        if (d.tts_voice) S.tts.setValue(d.tts_voice, true);
+        if (d.tts_voice) {
+            if (TTS_VOICES[d.tts_voice]) {
+                // Saved before Tier 33: the label of the voice that fills in
+                // for the cloned voice (the picker had no cloned voice then).
+                call("apply_setting", "tts_fallback_voice", TTS_VOICES[d.tts_voice]).then(loadVoiceValues);
+            } else if (voiceLabel(d.tts_voice)) {
+                S.tts.setValue(voiceLabel(d.tts_voice), true);
+            }
+        }
         if ("tts_rate" in d) S.rate.set(d.tts_rate, true);
         if ("tts_volume" in d) S.ttsVol.set(d.tts_volume, true);
         if (d.stt_lang) S.stt.setValue(d.stt_lang, true);

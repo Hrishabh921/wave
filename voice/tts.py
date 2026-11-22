@@ -145,6 +145,11 @@ except ImportError:
 # Wave's process. See voice/clone_worker.py for why XTTS must not run here.
 HAS_COQUI_TTS = importlib.util.find_spec("TTS") is not None
 
+# Tier 33: the cloned voice's id in Settings -> Voice (set_voice() /
+# voice_choice), next to the edge-tts voice ids - and Wave's default voice
+# whenever a voice sample is set.
+CLONE_VOICE_ID = "clone"
+
 # Tier 2: sentence-boundary splitter for speak_stream() - same approach
 # _speak_via_sapi already uses below (a period/question mark/exclamation
 # mark followed by whitespace, or a newline), plus '।' (the Hindi
@@ -462,6 +467,11 @@ class VoiceEngine:
         # deliberate opt-in (see settings/config.py's TTS_CLONE_* docstring).
         self._clone_engine = None
         self._clone_load_failed = False
+        # Tier 33: the cloned voice is one of the voices in Settings -> Voice
+        # (CLONE_VOICE_ID), picked by default. Picking an edge-tts voice
+        # there turns it off; while it's on, self.voice is only the voice
+        # used until the clone has loaded (or if it can't).
+        self.use_clone = True
         # Tier 31: XTTS-v2 runs in a process of its own (voice/clone_client.py
         # / clone_worker.py); _clone_engine is that process once it's up. One
         # worker thread here hands it the sentences in order, ahead of
@@ -485,10 +495,91 @@ class VoiceEngine:
         self._utterance_active = bool(value)
 
     def set_voice(self, voice_id: str):
-        """Switch the edge-tts voice used for English/Hinglish chunks.
-        Takes effect on the next speak() call. See set_voice_hi() for the
-        separate Hindi voice (Tier 13)."""
+        """Switch Wave's voice - Settings -> Voice. CLONE_VOICE_ID is the
+        cloned voice (Tier 33): it starts loading right away, and the
+        edge-tts voice picked before it fills in until it's ready. Any other
+        id is the edge-tts voice for English/Hinglish chunks, and turns the
+        cloned voice off. Takes effect on the next speak() call. See
+        set_voice_hi() for the separate Hindi voice (Tier 13)."""
+        if voice_id == CLONE_VOICE_ID:
+            self.use_clone = True
+            self._clone_load_failed = False   # picked on purpose: a fresh try
+            self.warm_up_clone()
+            return
+        self.use_clone = False
         self.voice = voice_id
+
+    def set_fallback_voice(self, voice_id: str):
+        """The edge-tts voice, without turning the cloned voice on or off -
+        what a "tts_voice" setting saved before Tier 33 meant: the picker had
+        no cloned voice then, and the clone spoke whenever a sample was set."""
+        self.voice = voice_id
+
+    @property
+    def voice_choice(self) -> str:
+        """What Settings -> Voice shows as picked: CLONE_VOICE_ID while the
+        cloned voice is on and can be (a voice sample is set, coqui-tts is
+        there), else the edge-tts voice id - the voice actually in use."""
+        return CLONE_VOICE_ID if self._clone_reference_ready() else self.voice
+
+    @staticmethod
+    def clone_voice_label() -> str:
+        """The cloned voice's name in Settings -> Voice: its voice sample's
+        file name, like the edge-tts voices' "Neerja — English India
+        (Female)" - e.g. "r1 — Cloned voice"."""
+        sample = (getattr(config, "TTS_CLONE_REFERENCE_PATH", "") or "").strip()
+        name = os.path.splitext(os.path.basename(sample.replace("\\", "/")))[0].strip() if sample else ""
+        if len(name) > 28:
+            name = name[:27].rstrip() + "…"
+        return f"{name} — Cloned voice" if name else "Cloned voice (needs a voice sample)"
+
+    def clone_state(self) -> str:
+        """Where the cloned voice stands: "unavailable" (no coqui-tts),
+        "disabled" (TTS_CLONE_ENABLED=false), "no_sample", "not_picked" (an
+        edge-tts voice is picked), "ready", "failed", "loading", or "idle"
+        (it loads when Wave next speaks)."""
+        if not HAS_COQUI_TTS:
+            return "unavailable"
+        if not getattr(config, "TTS_CLONE_ENABLED", True):
+            return "disabled"
+        sample = (getattr(config, "TTS_CLONE_REFERENCE_PATH", "") or "").strip()
+        if not sample or not os.path.exists(sample):
+            return "no_sample"
+        if not self.use_clone:
+            return "not_picked"
+        if self._clone_engine_current(self._clone_engine):
+            return "ready"
+        if self._clone_load_failed:
+            return "failed"
+        warm = self._clone_warm
+        if warm is not None and not warm.done():
+            return "loading"
+        return "idle"
+
+    def clone_status(self) -> str:
+        """One line for Settings -> Voice: is the cloned voice speaking, and
+        if not, why not."""
+        state = self.clone_state()
+        fallback = self._voice_name(self.voice)
+        if state == "ready":
+            device = (getattr(self._clone_engine, "info", None) or {}).get("device", "cpu")
+            return f"The cloned voice is ready (on the {'GPU' if device == 'cuda' else 'CPU'})."
+        return {
+            "unavailable": "The cloned voice needs coqui-tts - see docs/VOICE_LOCAL.md.",
+            "disabled": "The cloned voice is turned off (TTS_CLONE_ENABLED=false in .env).",
+            "no_sample": "No voice sample yet - add one on the Avatar page (Build avatar) for a cloned voice.",
+            "not_picked": f"Pick \"{self.clone_voice_label()}\" to speak in the cloned voice.",
+            "failed": (f"The cloned voice couldn't start, so Wave speaks with {fallback} - "
+                       "see wave_voice_clone.log (restarting Wave tries again)."),
+            "loading": f"The cloned voice is loading (about 20 s) - Wave speaks with {fallback} until then.",
+            "idle": f"The cloned voice loads when Wave next speaks ({fallback} fills in until then).",
+        }[state]
+
+    @staticmethod
+    def _voice_name(voice_id: str) -> str:
+        """"en-IN-NeerjaNeural" -> "Neerja"."""
+        last = str(voice_id or "").split("-")[-1]
+        return last[:-len("Neural")] if last.endswith("Neural") else (last or "the normal voice")
 
     def set_voice_hi(self, voice_id: str):
         """Switch the edge-tts voice used for chunks classified as Hindi
@@ -1758,10 +1849,13 @@ class VoiceEngine:
 
     def _clone_reference_ready(self) -> bool:
         """Cheap, no-load check: is there actually a usable voice-clone
-        setup right now? Package installed, TTS_CLONE_ENABLED, and a
-        reference file that exists - nothing here touches the (slow,
+        setup right now? Package installed, TTS_CLONE_ENABLED, the cloned
+        voice picked in Settings -> Voice (Tier 33), and a reference file
+        that exists - nothing here touches the (slow,
         first-call-downloads-1.8GB) engine itself. Safe to call often,
         e.g. from prefetch() per sentence, unlike _get_clone_engine()."""
+        if not getattr(self, "use_clone", True):
+            return False
         if not HAS_COQUI_TTS or not getattr(config, "TTS_CLONE_ENABLED", True):
             return False
         reference_path = (getattr(config, "TTS_CLONE_REFERENCE_PATH", "") or "").strip()
@@ -1822,11 +1916,14 @@ class VoiceEngine:
         """NON-blocking: the clone process if it's up for the current sample,
         else None - and if cloning is set up but not loaded yet, start
         loading it in the background, so this utterance goes out in the
-        edge-tts voice instead of waiting ~15 s in silence."""
+        edge-tts voice instead of waiting ~15 s in silence. None as well
+        while an edge-tts voice is picked, even with the process up."""
+        if not self._clone_reference_ready():
+            return None
         engine = self._clone_engine
         if self._clone_engine_current(engine):
             return engine
-        if self._clone_reference_ready() and not self._clone_load_failed:
+        if not self._clone_load_failed:
             self.warm_up_clone()
         return None
 

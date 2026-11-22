@@ -249,6 +249,14 @@ class WaveWebBridge(ParityMixin):
         never had: the voice sample "Build avatar" saved is what makes Wave
         speak in the user's own cloned voice, and without this every web
         session quietly spoke with edge-tts instead."""
+        # Tier 33: the voice picked in Settings -> Voice decides whether the
+        # cloned voice loads at all, so it's applied before the warm-up (the
+        # page applies the other settings later). A label - saved before
+        # Tier 33 - only chose the voice that fills in for the clone; the
+        # page handles that one.
+        saved_voice = str(settings.get("tts_voice") or "").strip()
+        if saved_voice and " — " not in saved_voice:
+            tts_engine.set_voice(saved_voice)
         saved = (settings.get("avatar_voice_reference_path") or "").strip()
         path = avatar_rig.find_voice_reference(saved, AVATAR_RIG_DIR)
         if path:

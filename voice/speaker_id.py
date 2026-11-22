@@ -8,15 +8,15 @@ owner's voiceprint before anything else happens to it (voice/stt.py), so
 other voices are dropped before they're even transcribed (no Whisper CPU
 spent on them, nothing of theirs written to the log).
 
-The voiceprint is the owner's voice as THIS PC's mic hears it: their voice
-training (scripts/train_my_voice.py, ~30 s of them reading through the mic
-Wave listens with) plus what Wave learns from their own clearly-recognised
-commands. Tier 32c: it no longer uses the cloned voice's sample at all. That
-sample needn't be the owner (on the owner's laptop it was someone else's
-WhatsApp voice note), and even a real recording of the owner made on a phone
-scores like a stranger through a laptop mic: the owner's mic voice scored
-0.16-0.19 against it, under the threshold, so Wave would have ignored its
-owner. Without voice training the check is simply off.
+The voiceprint is the owner's voice training - ~30 s of them reading through
+the mic Wave listens with (scripts/train_my_voice.py), and since Tier 33 also
+recordings of them (train_my_voice.py --from-file: a phone recording, a voice
+note) - plus what Wave learns from their own clearly-recognised commands.
+Tier 32c: it never uses the cloned voice's sample - that sample needn't be the
+owner (on the owner's laptop it is someone else's WhatsApp voice note, which
+scores 0.16-0.26 against them). A phone recording of the owner themself
+scores 0.50-0.68 against their mic training (Tier 33), so recordings of the
+owner do count. Without voice training the check is simply off.
 
 Model: 3D-Speaker's CAM++ (iic/speech_campplus_sv_zh_en_16k-common_advanced,
 Chinese+English, 16 kHz, 192-d), as exported by sherpa-onnx, run with
@@ -57,9 +57,16 @@ SAMPLE_RATE = 16000
 # "Baby") pass unchecked, so the wake word is never missed; what follows is
 # checked.
 MIN_SECONDS = 1.0
-LEARN_SCORE = 0.40         # only clearly-the-owner utterances refine it (a video scored <= 0.21)
+# Only clearly-the-owner utterances refine it (a video scored <= 0.21) - and
+# "clearly" is judged against the voice training alone (Tier 33), never with
+# the help of what was learned before, so the learned set can't drift towards
+# another voice one borderline utterance at a time.
+LEARN_SCORE = 0.40
 MAX_LEARNED = 40
-_VOICEPRINT_VERSION = 2    # 2 = voice training + learned only (1 also held a voice sample's centroids)
+# 2 = voice training ("mic", since Tier 33 also "recordings") + learned
+# (1 also held a voice sample's centroids)
+_VOICEPRINT_VERSION = 2
+TRAINING_SOURCES = ("mic", "recordings")
 
 
 def default_model_path() -> str:
@@ -108,6 +115,7 @@ class SpeakerVerifier:
         self._lock = threading.RLock()
         self._loaded = False               # voiceprint.npz read yet?
         self._mic = []                     # the owner's voice training through this mic
+        self._recordings = []              # ... and from recordings of them (Tier 33)
         self._learned = []                 # from their own clearly-recognised commands
         self._warned = set()
         self._announced = None             # the training size the "on" line was logged for
@@ -185,9 +193,10 @@ class SpeakerVerifier:
             return False
 
     # -- the voiceprint ------------------------------------------------------
-    # Saved in avatar_rig/voiceprint.npz: the voice training ("mic") and what
-    # was learned. Older files also held a voice sample's centroids; those are
-    # ignored now and dropped on the next save.
+    # Saved in avatar_rig/voiceprint.npz: the voice training ("mic", and
+    # since Tier 33 "recordings") and what was learned. Older files also held
+    # a voice sample's centroids; those are ignored now and dropped on the
+    # next save.
     def _load_voiceprint(self):
         self._loaded = True
         path = self.voiceprint_path()
@@ -195,11 +204,12 @@ class SpeakerVerifier:
             return
         try:
             with np.load(path, allow_pickle=False) as data:
-                self._mic = [row for row in data["mic"].astype(np.float32)] if "mic" in data.files else []
-                self._learned = [row for row in data["learned"].astype(np.float32)] if "learned" in data.files else []
+                def rows(name):
+                    return [row for row in data[name].astype(np.float32)] if name in data.files else []
+                self._mic, self._recordings, self._learned = rows("mic"), rows("recordings"), rows("learned")
         except Exception as e:
             logger.warning(f"Speaker check: couldn't read the saved voiceprint ({e}) - starting a new one.")
-            self._mic, self._learned = [], []
+            self._mic, self._recordings, self._learned = [], [], []
 
     def _save_voiceprint(self):
         path = self.voiceprint_path()
@@ -213,28 +223,39 @@ class SpeakerVerifier:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
             with open(tmp, "wb") as f:
-                np.savez(f, version=np.array(_VOICEPRINT_VERSION), mic=rows(self._mic), learned=rows(self._learned))
+                np.savez(f, version=np.array(_VOICEPRINT_VERSION), mic=rows(self._mic),
+                         recordings=rows(self._recordings), learned=rows(self._learned))
             os.replace(tmp, path)
         except Exception as e:
             logger.warning(f"Speaker check: couldn't save the voiceprint ({e}).")
 
     def _dim(self) -> int:
-        for items in (self._mic, self._learned):
+        for items in (self._mic, self._recordings, self._learned):
             if items:
                 return int(np.asarray(items[0]).shape[-1])
         return 192
 
+    def _training(self):
+        """Every piece of the voice training: through the mic, and from
+        recordings of the owner."""
+        return list(self._mic) + list(self._recordings)
+
+    def _training_target(self):
+        return _unit(np.mean(self._training(), axis=0))
+
     def _ready_voiceprint(self) -> bool:
         if not self._loaded:
             self._load_voiceprint()
-        if not self._mic:
+        if not self._training():
             self._warn_once("training", "Speaker check off: no voice training yet - run "
                                         "python scripts/train_my_voice.py (30 s of you through this mic).")
             return False
         return True
 
     def _targets(self):
-        targets = [_unit(np.mean(self._mic, axis=0))]
+        """The voice training as one average (mic and recordings together),
+        and what was learned as another."""
+        targets = [self._training_target()]
         if self._learned:
             targets.append(_unit(np.mean(self._learned, axis=0)))
         return targets
@@ -250,10 +271,12 @@ class SpeakerVerifier:
             except Exception as e:
                 self._warn_once("ready", f"Speaker check off: {e}")
                 return False
-            if ok and self._announced != len(self._mic):
-                self._announced = len(self._mic)
+            size = (len(self._mic), len(self._recordings))
+            if ok and self._announced != size:
+                self._announced = size
+                recordings = f" + {len(self._recordings)} from recordings of you" if self._recordings else ""
                 logger.info(f"Speaker check on: only the voice from your voice training counts "
-                            f"({len(self._mic)} pieces, +{len(self._learned)} learned, "
+                            f"({len(self._mic)} pieces through the mic{recordings}, +{len(self._learned)} learned, "
                             f"threshold {self.threshold():.2f}).")
             return ok
 
@@ -290,18 +313,35 @@ class SpeakerVerifier:
     def learn(self, check) -> bool:
         """Adds a clearly-the-owner utterance (heard through this PC's mic) to
         the voiceprint, so it keeps up with the owner's voice as Wave hears
-        it. Only for scores >= LEARN_SCORE; keeps the newest MAX_LEARNED."""
+        it. Only when it scores >= LEARN_SCORE against the voice training
+        itself (Tier 33: before, a score earned through the learned part
+        counted too - and on the owner's laptop that let in a piece closer to
+        someone else's voice than to theirs); keeps the newest MAX_LEARNED."""
         if check is None or check.embedding is None or check.score < LEARN_SCORE:
             return False
         with self._lock:
             if not self._loaded:
                 self._load_voiceprint()
-            if not self._mic:
+            if not self._training():
                 return False
-            self._learned.append(np.asarray(check.embedding, dtype=np.float32))
+            embedding = np.asarray(check.embedding, dtype=np.float32)
+            if float(_unit(embedding) @ self._training_target()) < LEARN_SCORE:
+                return False
+            self._learned.append(embedding)
             del self._learned[:-MAX_LEARNED]
             self._save_voiceprint()
         return True
+
+    def _vet_learned(self) -> int:
+        """Drops learned pieces the (new) voice training doesn't clearly
+        agree with - the same test learn() applies. Returns how many."""
+        if not self._learned or not self._training():
+            return 0
+        target = self._training_target()
+        kept = [e for e in self._learned if float(_unit(e) @ target) >= LEARN_SCORE]
+        dropped = len(self._learned) - len(kept)
+        self._learned = kept
+        return dropped
 
     # -- voice training (scripts/train_my_voice.py) -------------------------
     def window_embeddings(self, x, seconds: float = 3.0, hop: float = 1.5):
@@ -314,18 +354,49 @@ class SpeakerVerifier:
             windows = [x[i:i + n] for i in range(0, max(1, len(x) - n + 1), step)] or [x]
             return [self._embed(w) for w in windows]
 
-    def set_training(self, embeddings) -> None:
-        """Replaces the voice training with these embeddings (and saves it)."""
+    def set_training(self, embeddings, source: str = "mic") -> int:
+        """Replaces one part of the voice training - "mic" (the owner reading
+        through this PC's mic) or "recordings" (recordings of them) - with
+        these embeddings, re-checks what was learned against the new
+        training, and saves. Returns how many learned pieces were dropped."""
+        if source not in TRAINING_SOURCES:
+            raise ValueError(f"unknown voice training source {source!r}")
         with self._lock:
             if not self._loaded:
                 self._load_voiceprint()
-            self._mic = [np.asarray(e, dtype=np.float32) for e in embeddings]
+            pieces = [np.asarray(e, dtype=np.float32) for e in embeddings]
+            if source == "mic":
+                self._mic = pieces
+            else:
+                self._recordings = pieces
+            dropped = self._vet_learned()
             self._save_voiceprint()
+            return dropped
+
+    def training_size(self) -> dict:
+        """{"mic": n, "recordings": n, "learned": n} - after loading."""
+        with self._lock:
+            if not self._loaded:
+                self._load_voiceprint()
+            return {"mic": len(self._mic), "recordings": len(self._recordings), "learned": len(self._learned)}
+
+    def training_scores(self, embeddings, source: str = "mic"):
+        """How these embeddings score against one part of the saved training
+        (an empty list when that part is empty) - train_my_voice.py uses it
+        to check a recording is the same voice as the mic training."""
+        with self._lock:
+            if not self._loaded:
+                self._load_voiceprint()
+            part = self._mic if source == "mic" else self._recordings
+            if not part:
+                return []
+            target = _unit(np.mean(part, axis=0))
+            return [float(_unit(e) @ target) for e in embeddings]
 
     def reset(self):
         """Forget the in-memory voiceprint (reloaded from disk on next use)."""
         with self._lock:
-            self._loaded, self._mic, self._learned, self._announced = False, [], [], None
+            self._loaded, self._mic, self._recordings, self._learned, self._announced = False, [], [], [], None
 
 
 speaker_verifier = SpeakerVerifier()

@@ -9,13 +9,18 @@ Whisper CPU spent on them, nothing they said written to the log.
 
 ## How it decides
 
-- **The voiceprint is your voice training through this PC's mic** -
-  `scripts/train_my_voice.py`, ~30 s of you reading through the mic Wave listens with -
-  plus what Wave learns from your own commands. **Until you've trained once, the check
-  is off** and every voice counts, as before.
-- **It learns.** An utterance that clearly is you (score ≥ 0.40) is added (the newest 40
-  are kept), so Wave keeps up with your voice as it hears it. Never while Wave itself is
-  talking.
+- **The voiceprint is your voice training** - `scripts/train_my_voice.py`, ~30 s of you
+  reading through the mic Wave listens with, and since Tier 33 also recordings of you
+  (`--from-file`: a voice note, a phone recording), averaged together - plus what Wave
+  learns from your own commands. **Until you've trained once, the check is off** and
+  every voice counts, as before.
+- **It learns.** An utterance that clearly is you (score ≥ 0.40 against the voice
+  training itself) is added (the newest 40 are kept), so Wave keeps up with your voice as
+  it hears it. Never while Wave itself is talking. Tier 33: "clearly" used to count a
+  score earned through what was learned before - on the owner's laptop that let in one
+  piece that sounded more like someone else's voice note (0.31) than like a recording of
+  the owner (0.28). Now only the training decides, and new training drops learned pieces
+  it doesn't clearly agree with.
 - **A score** is the cosine similarity to the training (or to what was learned). At or
   above `SPEAKER_VERIFY_THRESHOLD` (0.35) it's you.
 - **Short utterances (< 1 s) aren't checked** - a voice says too little in that time -
@@ -33,12 +38,22 @@ Not your voice (speaker score 0.12) - ignored, not transcribed
 ### Why not the cloned voice's sample? (Tier 32c)
 
 Tier 32 first built the voiceprint from the voice sample Wave's cloned voice uses
-(`TTS_CLONE_REFERENCE_PATH`). Two things are wrong with that: the sample needn't be the
-owner at all (on the owner's laptop it was someone else's WhatsApp voice note), and even
-a phone recording of the owner sounds like a stranger through a laptop mic - the owner's
-mic voice scored only **0.16-0.19** against it, under the threshold, so Wave would have
-ignored its own owner. The speaker check now ignores the sample completely; it scores
-**at most 0.22** against the trained voiceprint, i.e. it's rejected like any other voice.
+(`TTS_CLONE_REFERENCE_PATH`). But the sample needn't be the owner at all: on the owner's
+laptop it is someone else's WhatsApp voice note ("r1"), which is why the owner's mic
+voice scored only **0.16-0.19** against it - under the threshold, so Wave would have
+ignored its own owner and let that person through instead. (Tier 32c also blamed the
+phone for it; Tier 33 measured a phone recording of the owner themself, "r2": its 1.5 s
+pieces score **0.50-0.68** against the owner's mic training - a phone doesn't make the
+owner a stranger.) The speaker check ignores the cloned voice's sample completely; r1
+scores **at most 0.31** against the trained voiceprint, i.e. it's rejected like any
+other voice, and so is Wave's own cloned voice made from it (**at most 0.28**).
+
+### Recordings of you (Tier 33)
+
+`train_my_voice.py --from-file r2.mp4` adds recordings of you to the mic training -
+any audio or video file (a voice note, a phone recording), replacing recordings added
+before. When there is mic training, the recording has to sound like it, or nothing is
+saved: that is exactly the check the cloned voice's sample would have failed.
 
 ## Setting it up
 
@@ -46,6 +61,7 @@ ignored its own owner. The speaker check now ignores the sample completely; it s
 wave_env\Scripts\pip install kaldi-native-fbank==1.23.3
 wave_env\Scripts\python scripts\download_speaker_model.py
 wave_env\Scripts\python scripts\train_my_voice.py
+wave_env\Scripts\python scripts\train_my_voice.py --from-file C:\Users\you\Downloads\r2.mp4
 ```
 
 `train_my_voice.py` (Wave closed, TV off): one beep - read the five lines it prints
@@ -53,7 +69,8 @@ wave_env\Scripts\python scripts\train_my_voice.py
 through the same mic); three beeps - done. Pieces that don't sound like the rest are
 dropped, and nothing is saved unless the recording is one clear voice. `--no-video`
 skips the video part, `--video-only` just measures a video without touching the
-training, `--reset` forgets the training and everything learned. Play the video on
+training, `--from-file` adds recordings of you instead of recording now, `--reset`
+forgets the training and everything learned. Play the video on
 another device (a TV, a phone): this laptop's mic array removes the laptop's own speaker
 sound.
 
@@ -78,6 +95,15 @@ On the owner's laptop (Intel Smart Sound mic array), after voice training:
 | the owner, held-out 1.5 s pieces of the training recording | 0.71-0.74 |
 | a video playing on a phone in the room (owner silent), 12 pieces | at most 0.21, mean 0.15 |
 | the cloned voice's sample (someone else's voice note) | at most 0.22 |
+| Tier 33: a phone recording of the owner (r2), 1.5 s pieces, against the mic training | 0.50-0.68 |
+
+With r2 added (12 mic + 14 recording pieces) and one doubtful learned piece dropped:
+
+| | score |
+|---|---|
+| the owner's own commands as Wave heard them (the 5 learned pieces), against the training | 0.71-0.82 (0.67-0.77 before) |
+| r1, the cloned voice's sample (someone else), 41 pieces of 1.5 s | at most 0.31, mean 0.20 |
+| Wave's own cloned voice (XTTS-v2 from r1), 1.5 s pieces | at most 0.28 |
 
 Sharing the room and the mic doesn't make voices match: the video scored the same 0.21
 against the training alone. The model choice came from an earlier synthetic calibration

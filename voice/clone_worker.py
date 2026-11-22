@@ -19,7 +19,9 @@ followed by exactly 4*n bytes of little-endian float32 samples:
     in:  {"cmd": "say", "id": 3, "text": "...", "lang": "en"}
     out: {"id": 3, "ok": true, "rate": 24000, "n": 52000, "s": 7.4} + samples
          {"id": 3, "ok": false, "error": "..."}
-It exits when stdin closes - Wave quitting, or crashing.
+It exits when stdin closes - Wave quitting, or crashing. Everything it (or a
+library) prints goes to stderr, which Wave points at wave_voice_clone.log in
+its data folder.
 """
 import argparse
 import json
@@ -31,11 +33,27 @@ import time
 
 def _claim_stdout():
     """The protocol owns the real stdout; anything a library prints goes to
-    stderr instead (which Wave logs), so it can't corrupt the replies."""
+    stderr instead (Wave's wave_voice_clone.log), so it can't corrupt the
+    replies."""
     fd = os.dup(sys.stdout.fileno())
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     sys.stdout = sys.stderr
     return os.fdopen(fd, "wb")
+
+
+def _claim_stdin():
+    """The protocol owns the real stdin too. A library that asks a question
+    with input() - coqui-tts asks for XTTS-v2's licence that way - would
+    otherwise wait forever for an answer on the request pipe, where Wave
+    sends nothing until this process says it's ready: the cloned voice
+    then never comes, and nothing says why. With stdin on NUL that
+    question gets EOFError straight away, which is reported to Wave."""
+    fd = os.dup(sys.stdin.fileno())
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, sys.stdin.fileno())
+    os.close(null)
+    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+    return os.fdopen(fd, "rb")
 
 
 def _send(out, header: dict, payload: bytes = b"") -> None:
@@ -53,7 +71,7 @@ def main(argv=None, stdin=None, stdout=None, load=None) -> int:
     args = parser.parse_args(argv)
     child = stdout is None
     out = _claim_stdout() if child else stdout
-    inp = stdin if stdin is not None else sys.stdin.buffer
+    inp = stdin if stdin is not None else (_claim_stdin() if child else sys.stdin.buffer)
     if child:
         logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
         # A windowless child is exactly what Windows' power throttling goes

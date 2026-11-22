@@ -4,13 +4,21 @@ scripts/train_my_voice.py — Tier 32b: teach Wave your voice through THIS PC's 
 Wave's speaker check (voice/speaker_id.py) only lets through the voice it was
 trained on here: this records you reading a few lines through the same mic Wave
 listens with, and that becomes the voiceprint (Tier 32c: the cloned voice's sample
-isn't used - it needn't be you, and a phone recording of you scored only 0.16-0.19
-through a laptop mic). Until you've done this once, the speaker check stays off.
+isn't used - it needn't be you; on the owner's laptop it's someone else's voice).
+Until you've done this once, the speaker check stays off.
 
     python scripts/train_my_voice.py              # you (30 s), then a video (20 s)
     python scripts/train_my_voice.py --no-video   # just you
     python scripts/train_my_voice.py --video-only # no training: how a video's voices score now
+    python scripts/train_my_voice.py --from-file r2.mp4   # add recordings of you (Tier 33)
     python scripts/train_my_voice.py --reset      # forget the training and what was learned
+
+--from-file takes recordings of YOU - a voice note, a phone recording, any
+audio or video file - and adds them to the mic training (replacing recordings
+added before). When there is mic training, a recording has to sound like it,
+or nothing is saved: a phone recording of the owner scored 0.50-0.68 against
+their mic training, someone else's voice note at most 0.26. Learned pieces the
+new training doesn't clearly agree with are dropped.
 
 Beeps: one = start reading, two = stop talking and play a video (it measures how
 other voices score through this mic, to place the threshold), three = done.
@@ -90,6 +98,69 @@ def unit(v):
     return v / (float(np.linalg.norm(v)) + 1e-9)
 
 
+def read_recording(path: str):
+    """Any audio or video file (a voice note, a phone recording) as 16 kHz
+    mono float32 - decoded with PyAV, which faster-whisper already brings."""
+    import av  # noqa: PLC0415
+
+    out = []
+    with av.open(path) as container:
+        resampler = av.audio.resampler.AudioResampler(format="flt", layout="mono", rate=RATE)
+        for frame in container.decode(audio=0):
+            out.extend(f.to_ndarray().reshape(-1) for f in resampler.resample(frame))
+        out.extend(f.to_ndarray().reshape(-1) for f in resampler.resample(None))
+    return np.concatenate(out).astype(np.float32) if out else np.zeros(0, np.float32)
+
+
+def consistent(verifier, embs):
+    """The windows that agree with the rest (leave-one-out similarity >= 0.45),
+    and those similarities."""
+    loo = [float(e @ unit(np.mean([o for j, o in enumerate(embs) if j != i], axis=0))) for i, e in enumerate(embs)]
+    return [e for e, s in zip(embs, loo) if s >= 0.45], loo
+
+
+def train_from_files(verifier, paths) -> int:
+    """--from-file: recordings of the owner, added to the mic training."""
+    embs, pieces_15, total = [], [], 0.0
+    for path in paths:
+        try:
+            x = read_recording(path)
+        except Exception as e:
+            print(f"Couldn't read {path}: {e}")
+            return 4
+        voiced, peak = speech_only(x)
+        total += len(voiced) / RATE
+        print(f"{os.path.basename(path)}: {len(x) / RATE:.1f}s, {len(voiced) / RATE:.1f}s of speech (peak {peak:.2f})")
+        if len(voiced) >= 3 * RATE:
+            embs += verifier.window_embeddings(voiced)
+            pieces_15 += [verifier.window_embeddings(p, seconds=1.5, hop=1.5)[0] for p in pieces(voiced, 1.5)]
+    if total < 10:
+        print("Not enough speech in the recording(s) (need ~10 s) - nothing saved.")
+        return 2
+    kept, loo = consistent(verifier, embs)
+    print(f"pieces: {len(embs)}, agreeing with the rest: {len(kept)} (min {min(loo):.2f}, mean {np.mean(loo):.2f})")
+    if len(kept) < max(4, 2 * len(embs) // 3):
+        print("The recording(s) don't sound like one voice (noise, or someone/something else talking) - nothing saved.")
+        return 3
+    against_mic = verifier.training_scores(pieces_15, "mic")
+    if against_mic:
+        print(f"its 1.5 s pieces against your mic training: min {min(against_mic):.2f}, "
+              f"mean {np.mean(against_mic):.2f}, max {max(against_mic):.2f} (threshold {verifier.threshold():.2f})")
+        if np.mean(against_mic) < verifier.threshold():
+            print("That doesn't sound like the voice you trained through the mic - nothing saved. If it really is "
+                  "you, run the mic training again first (or --reset).")
+            return 5
+    dropped = verifier.set_training(kept, source="recordings")
+    verifier.reset()                     # reload with the new training
+    verifier.ready()
+    size = verifier.training_size()
+    print(f"saved: {len(kept)} pieces from the recording(s) -> {verifier.voiceprint_path()} "
+          f"(training now {size['mic']} mic + {size['recordings']} recording pieces, {size['learned']} learned)")
+    if dropped:
+        print(f"dropped {dropped} learned piece(s) the training doesn't clearly agree with")
+    return 0
+
+
 def video_scores(verifier, video):
     """1.5 s pieces of a recording with only OTHER voices in it (a video, the
     owner silent), scored against the current voiceprint."""
@@ -116,6 +187,9 @@ def main(argv=None) -> int:
     parser.add_argument("--no-video", action="store_true", help="skip the video part")
     parser.add_argument("--video-only", action="store_true",
                         help="no training: just measure how a video's voices score now (you silent)")
+    parser.add_argument("--from-file", nargs="+", metavar="RECORDING",
+                        help="add recordings of you (a voice note, a phone recording; any audio/video file) "
+                             "to the training, instead of recording now")
     parser.add_argument("--reset", action="store_true", help="forget the voice training and what was learned")
     args = parser.parse_args(argv)
     verifier = speaker_id.speaker_verifier
@@ -132,6 +206,8 @@ def main(argv=None) -> int:
     if not verifier._ready_model():
         print("The speaker model isn't installed - run: python scripts/download_speaker_model.py")
         return 1
+    if args.from_file:
+        return train_from_files(verifier, args.from_file)
     if args.video_only:
         if not verifier.ready():
             print("No voiceprint yet - train first (python scripts/train_my_voice.py).")
@@ -161,8 +237,7 @@ def main(argv=None) -> int:
         print("Not enough speech heard (need ~12 s) - nothing saved. Speak a little louder or closer, and try again.")
         return 2
     embs = verifier.window_embeddings(voiced)
-    loo = [float(e @ unit(np.mean([o for j, o in enumerate(embs) if j != i], axis=0))) for i, e in enumerate(embs)]
-    kept = [e for e, s in zip(embs, loo) if s >= 0.45]
+    kept, loo = consistent(verifier, embs)
     print(f"pieces: {len(embs)}, agreeing with the rest: {len(kept)} (min {min(loo):.2f}, mean {np.mean(loo):.2f})")
     if len(kept) < max(4, 2 * len(embs) // 3):
         print("The recording doesn't sound like one voice (too much noise, or someone/something else talking) "
@@ -178,10 +253,12 @@ def main(argv=None) -> int:
         print(f"your 1.5 s pieces (held out) would score: min {min(own_scores):.2f}, "
               f"p10 {np.percentile(own_scores, 10):.2f}, mean {np.mean(own_scores):.2f}")
 
-    verifier.set_training(kept)
+    dropped = verifier.set_training(kept)
     verifier.reset()                     # reload with the training included
     verifier.ready()
     print(f"saved: {len(kept)} pieces of your voice through this mic -> {verifier.voiceprint_path()}")
+    if dropped:
+        print(f"dropped {dropped} learned piece(s) the new training doesn't clearly agree with")
 
     if video is not None:
         others = video_scores(verifier, video)

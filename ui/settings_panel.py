@@ -8,6 +8,7 @@ Split out of the original ui/main_window.py (see ui/common.py for why).
 from ui.common import *
 from ui.theme import ThemeColors
 from ui.effects import add_shadow, make_section_heading, make_divider
+from voice.tts import CLONE_VOICE_ID
 from voice.wakeword import get_wake_gate, reset_wake_gate
 
 
@@ -283,17 +284,19 @@ class SettingsPanel(QWidget):
         pv.setSpacing(14)
         
         # ── TTS Voice ────────────────────────────────
+        # Tier 33: the cloned voice (named after its voice sample) comes
+        # first - it's Wave's default whenever a sample is set.
         pv.addWidget(QLabel("TTS Voice:"))
         self.tts_combo = QComboBox()
-        self.tts_combo.addItems(list(self.TTS_VOICES.keys()))
-        current_label = next(
-            (lbl for lbl, vid in self.TTS_VOICES.items()
-             if vid == tts_engine.voice),
-            next(iter(self.TTS_VOICES)),
-        )
-        self.tts_combo.setCurrentText(current_label)
+        self._clone_label = tts_engine.clone_voice_label()
+        self.tts_combo.addItems([self._clone_label] + list(self.TTS_VOICES.keys()))
+        self.tts_combo.setCurrentText(self._voice_label(tts_engine.voice_choice))
         self.tts_combo.currentTextChanged.connect(self._on_tts_voice_change)
         pv.addWidget(self.tts_combo)
+        self.tts_clone_status_lbl = QLabel(tts_engine.clone_status())
+        self.tts_clone_status_lbl.setWordWrap(True)
+        self.tts_clone_status_lbl.setStyleSheet(f"color: {self._theme.text_muted}; font-size: 11.5px; background: transparent;")
+        pv.addWidget(self.tts_clone_status_lbl)
 
         # ── Speech rate ───────────────────────────────
         pv.addWidget(make_divider(self._theme))
@@ -392,9 +395,69 @@ class SettingsPanel(QWidget):
 
     # ── Voice Settings handlers ───────────────────────────────────────────
     def _on_tts_voice_change(self, label: str):
-        voice_id = self.TTS_VOICES.get(label)
+        voice_id = self._voice_id(label)
         if voice_id:
             tts_engine.set_voice(voice_id)
+            self.refresh_clone_status()
+
+    # Tier 33: the cloned voice in the picker
+    def _voice_id(self, label: str):
+        """A picker label -> its voice id (CLONE_VOICE_ID for the cloned
+        voice), or None."""
+        if label and label in (getattr(self, "_clone_label", None), tts_engine.clone_voice_label()):
+            return CLONE_VOICE_ID
+        return self.TTS_VOICES.get(label)
+
+    def _voice_label(self, voice_id: str) -> str:
+        if voice_id == CLONE_VOICE_ID:
+            return getattr(self, "_clone_label", None) or tts_engine.clone_voice_label()
+        return next((lbl for lbl, vid in self.TTS_VOICES.items() if vid == voice_id), next(iter(self.TTS_VOICES)))
+
+    def current_tts_voice_id(self) -> str:
+        """What "Save Settings" stores as "tts_voice"."""
+        return self._voice_id(self.tts_combo.currentText()) or tts_engine.voice_choice
+
+    def select_tts_voice(self, saved: str) -> None:
+        """A saved "tts_voice" setting, applied. Since Tier 33 that's a voice
+        id; before, it was the label of an edge-tts voice, saved when the
+        picker had no cloned voice - it only ever chose the voice that fills
+        in for the clone, and keeps exactly that meaning."""
+        saved = str(saved or "")
+        if saved in self.TTS_VOICES:
+            tts_engine.set_fallback_voice(self.TTS_VOICES[saved])
+            self.refresh_clone_voice()
+        elif saved == CLONE_VOICE_ID or saved in self.TTS_VOICES.values():
+            self.tts_combo.setCurrentText(self._voice_label(saved))
+
+    def refresh_clone_voice(self) -> None:
+        """The cloned voice's entry, the picked voice and the status line
+        again - after the voice sample changed (start-up restore, "Build
+        avatar")."""
+        if not hasattr(self, "tts_combo"):
+            return
+        self._clone_label = tts_engine.clone_voice_label()
+        self.tts_combo.blockSignals(True)
+        try:
+            self.tts_combo.setItemText(0, self._clone_label)
+            self.tts_combo.setCurrentText(self._voice_label(tts_engine.voice_choice))
+        finally:
+            self.tts_combo.blockSignals(False)
+        self.refresh_clone_status()
+
+    def refresh_clone_status(self) -> None:
+        """The status line under the picker; while the cloned voice is
+        loading it checks again every few seconds, until it isn't."""
+        label = getattr(self, "tts_clone_status_lbl", None)
+        if label is None:
+            return
+        label.setText(tts_engine.clone_status())
+        if tts_engine.clone_state() == "loading" and not getattr(self, "_clone_status_pending", False):
+            self._clone_status_pending = True
+
+            def again():
+                self._clone_status_pending = False
+                self.refresh_clone_status()
+            QTimer.singleShot(3000, again)
 
     def _on_rate_change(self, value: int):
         tts_engine.set_rate(f"{value - 100:+d}%")

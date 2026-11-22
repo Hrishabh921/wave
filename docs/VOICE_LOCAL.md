@@ -206,7 +206,9 @@ with their real sample. What that took:
 - **The licence prompt.** XTTS-v2 asks once, in a console, to accept Coqui's
   non-commercial CPML. A windowed launch (`pythonw`) has no console, so do the first
   download from a terminal (or with `COQUI_TOS_AGREED=1`); coqui-tts then writes
-  `tos_agreed.txt` next to the model and never asks again.
+  `tos_agreed.txt` next to the model and never asks again. (Since Tier 33 the voice
+  process can't wait on that question: it fails at once and says so in
+  `wave_voice_clone.log`.)
 - **Its own process.** XTTS-v2 never runs inside Wave's process: its token loop gives
   up and re-takes Python's GIL about a thousand times per token, so any busy Python
   thread in Wave (there are many - mic, AEC, UI bridge) made it up to 100x slower, and
@@ -249,6 +251,44 @@ download; NVIDIA driver with CUDA 13 support):
 wave_env\Scripts\pip install --no-deps --force-reinstall torch==2.14.1+cu130 --index-url https://download.pytorch.org/whl/cu130
 ```
 
+### In the voice picker, and a start that can't hang - Tier 33
+
+**Settings -> Voice.** The cloned voice is the picker's first entry, named after its
+voice sample (`r1.wav` shows as "r1 — Cloned voice"), and Wave's default whenever a
+sample is set; picking Neerja, Aria, ... turns it off, picking it again turns it back
+on (and loads it, if it isn't loaded). A line under the picker says where it stands:
+loading (with the voice that fills in until then), ready (CPU or GPU), couldn't start,
+or no sample yet. Picking a sample with "Build avatar" makes the cloned voice the voice
+again. The setting is saved as a voice id (`"tts_voice": "clone"` or
+`"en-US-AriaNeural"` in `wave_settings.json`); a label saved before Tier 33 only ever
+chose the fill-in voice (the picker had no cloned voice then), and keeps that meaning.
+The web UI applies a saved edge-tts voice before the warm-up, so XTTS-v2 isn't loaded
+for nothing.
+
+**The start that never finished.** On the user's laptop, Wave started from VS Code
+spoke every reply in Neerja: its voice process sat there, never ready, idle about two
+seconds of CPU in - after its imports, where coqui-tts checks the licence (asking with
+`input()` when it can't find `tos_agreed.txt`) and then asks huggingface.co about the
+model, as `TTS(model_name)` does on every start. Nothing said why: the process's output
+went to a pipe Wave only logged at debug level, and Wave waited up to 15 minutes. Now:
+
+- **Loaded from the local copy.** `voice/clone_xtts.py` finds the downloaded model in
+  Hugging Face's cache without the network (`snapshot_download(local_files_only=True)`)
+  and loads it by path, after checking the licence the way coqui-tts does
+  (`tos_agreed.txt`, or `COQUI_TOS_AGREED=1`). Only a model that isn't downloaded yet
+  goes through `TTS(model_name)`. Measured: ready in 16 s with the network unreachable,
+  and the same speech as before (one sentence, fixed seed: the same 6.50 s, samples
+  within 1.5e-5).
+- **No question can block it.** The process's stdin is NUL for everything but the
+  request protocol, so a library asking a question (`input()`) gets "no answer" at once
+  and the error reaches Wave's log, instead of waiting for a line Wave never sends.
+- **Its own log.** Everything the process prints goes straight into
+  `wave_voice_clone.log` in Wave's data folder (rolled to `.1` past 1 MB) - not through
+  a pipe Wave has to keep reading.
+- **Not silent while slow.** Every 60 s that it's still loading, Wave's log says so,
+  with the process's last line; one that exits before it's ready is reported with its
+  last line too.
+
 ## What's still open
 
 - No Settings-dialog UI for either download's consent prompt (see above) - natural
@@ -259,10 +299,12 @@ wave_env\Scripts\pip install --no-deps --force-reinstall torch==2.14.1+cu130 --i
   on `docs/MANUAL_TEST_CHECKLIST.md`'s Tier 13 entry - everything above is reasoned
   through carefully and the latency numbers are real measurements, but neither
   substitutes for a human listening on their own PC.
-- Voice cloning (just above) now has a real ~21s reference clip prepared from the
-  user's own voice note (`avatar_rig/voice_reference.wav` - the single longest clean,
-  continuous stretch of speech `ffmpeg silencedetect` found in their 65s WhatsApp
-  note, not just the first N seconds), and `config.TTS_CLONE_REFERENCE_PATH` is wired
+- Voice cloning (just above) now has a real ~21s reference clip prepared from a
+  WhatsApp voice note the user gave ("r1" - someone else's voice, the user said on
+  2026-11-21; `avatar_rig/r1.wav` since Tier 33, before that `voice_reference.wav`: the
+  single longest clean, continuous stretch of speech `ffmpeg silencedetect` found in
+  the 65s note, 35.3-56.3 s, not just the first N seconds), and
+  `config.TTS_CLONE_REFERENCE_PATH` is wired
   up and persisted (see `docs/ROADMAP_BEAT_SARA.md`'s Tier 25 "Status" for a real bug
   this surfaced and fixed - the reference path wasn't being saved across restarts).
   Tier 31 installed and ran it on the user's machine (see "Running it for real"

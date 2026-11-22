@@ -229,11 +229,86 @@ class XttsVoiceTests(unittest.TestCase):
         fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True))
         fake_api = types.ModuleType("TTS.api")
         fake_api.TTS = _FakeTTS
-        with mock.patch.dict(sys.modules, {"torch": fake_torch, "TTS": types.ModuleType("TTS"), "TTS.api": fake_api}):
+        with mock.patch.dict(sys.modules, {"torch": fake_torch, "TTS": types.ModuleType("TTS"), "TTS.api": fake_api}), \
+                mock.patch.object(self.clone_xtts, "cached_model_dir", return_value=None):
             voice = self.clone_xtts.load_xtts("tts_models/multilingual/multi-dataset/xtts_v2", "auto")
         self.assertEqual(moved, ["cuda"])
         self.assertEqual((voice.device, voice.sample_rate), ("cuda", 24000))
         self.assertIs(voice.model, model)
+
+    def test_load_xtts_loads_the_local_copy_by_path_not_by_name(self):
+        """By name, coqui-tts asks huggingface.co about the model on every
+        start; the local copy is loaded straight from its folder."""
+        made = []
+        model = _FakeXtts()
+
+        class _FakeTTS:
+            def __init__(self, model_name="", **kwargs):
+                made.append((model_name, kwargs))
+                self.synthesizer = types.SimpleNamespace(tts_model=model, output_sample_rate=24000)
+
+        fake_torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: False))
+        fake_api = types.ModuleType("TTS.api")
+        fake_api.TTS = _FakeTTS
+        folder = os.path.join("C:" + os.sep, "hf", "snapshots", "345b")
+        with mock.patch.dict(sys.modules, {"torch": fake_torch, "TTS": types.ModuleType("TTS"), "TTS.api": fake_api}), \
+                mock.patch.object(self.clone_xtts, "cached_model_dir", return_value=folder):
+            voice = self.clone_xtts.load_xtts("tts_models/multilingual/multi-dataset/xtts_v2", "auto")
+        self.assertEqual(made, [("", {"model_path": os.path.join(folder, "model.pth"),
+                                      "config_path": os.path.join(folder, "config.json"), "progress_bar": False})])
+        self.assertEqual(voice.device, "cpu")
+
+    def _cached_dir(self, agreed=True, files=("config.json", "model.pth", "vocab.json"), downloaded=True):
+        """cached_model_dir() against stand-ins for coqui's ModelManager and
+        huggingface_hub; returns (result, snapshot_download calls)."""
+        tmp = tempfile.mkdtemp(prefix="wave_xtts_cache_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        snapshot = os.path.join(tmp, "snapshots", "345b")
+        os.makedirs(snapshot)
+        for name in files:
+            with open(os.path.join(snapshot, name), "wb") as f:
+                f.write(b"x")
+        calls = []
+
+        def snapshot_download(repo_id, **kwargs):
+            calls.append((repo_id, kwargs))
+            if not downloaded:
+                raise FileNotFoundError("simulated: not in the cache")
+            return snapshot
+
+        class _FakeManager:
+            def __init__(self, progress_bar=True):
+                self.models_dict = {"tts_models": {"multilingual": {"multi-dataset": {"xtts_v2": {
+                    "repo_id": "tts-hub/XTTS-v2", "ignore": ["samples/*", "dvae.pth"], "tos_required": True}}}}}
+                import pathlib  # noqa: PLC0415
+                self.output_prefix = pathlib.Path(tmp) / "tts"
+
+            @staticmethod
+            def tos_agreed(item, path):
+                return agreed
+
+        hub = types.ModuleType("huggingface_hub")
+        hub.snapshot_download = snapshot_download
+        manage = types.ModuleType("TTS.utils.manage")
+        manage.ModelManager = _FakeManager
+        with mock.patch.dict(sys.modules, {"huggingface_hub": hub, "TTS": types.ModuleType("TTS"),
+                                           "TTS.utils": types.ModuleType("TTS.utils"), "TTS.utils.manage": manage}):
+            return self.clone_xtts.cached_model_dir("tts_models/multilingual/multi-dataset/xtts_v2"), calls, snapshot
+
+    def test_the_local_copy_is_found_without_the_network(self):
+        found, calls, snapshot = self._cached_dir()
+        self.assertEqual(found, os.path.abspath(snapshot))
+        self.assertEqual(calls, [("tts-hub/XTTS-v2", {"allow_patterns": None, "ignore_patterns": ["samples/*", "dvae.pth"],
+                                                      "local_files_only": True})])
+
+    def test_no_local_copy_until_the_licence_is_accepted(self):
+        found, calls, _ = self._cached_dir(agreed=False)
+        self.assertIsNone(found)
+        self.assertEqual(calls, [])
+
+    def test_no_local_copy_before_the_first_download_or_with_files_missing(self):
+        self.assertIsNone(self._cached_dir(downloaded=False)[0])
+        self.assertIsNone(self._cached_dir(files=("config.json", "vocab.json"))[0])
 
 
 # --------------------------------------------------------------------------
@@ -329,7 +404,14 @@ mode = sys.argv[1]
 if mode == "fail-start":
     send({"ready": False, "error": "simulated: no model"}); sys.exit(1)
 if mode == "die-at-start":
+    sys.stderr.write("Traceback (most recent call last): simulated crash\n"); sys.stderr.flush()
     sys.exit(3)
+if mode == "never-ready":
+    sys.stderr.write("INFO stuck at the licence question\n"); sys.stderr.flush()
+    time.sleep(60)
+if mode == "slow-start":
+    sys.stderr.write("INFO loading the model\n"); sys.stderr.flush()
+    time.sleep(1.5)
 sys.stderr.write("INFO stand-in worker up\n"); sys.stderr.flush()
 send({"ready": True, "device": "cpu", "rate": 16000, "load_s": 0.1, "latents_s": 0.0})
 for raw in sys.stdin.buffer:
@@ -359,7 +441,9 @@ class ClientProcessTests(unittest.TestCase):
             f.write(_STAND_IN_WORKER)
 
     def _process(self, mode="ok"):
-        proc = self.clone_client.CloneVoiceProcess("xtts", "voice.wav", command=[sys.executable, self.script, mode])
+        self.log = os.path.join(self.tmp, "wave_voice_clone.log")
+        proc = self.clone_client.CloneVoiceProcess("xtts", "voice.wav", command=[sys.executable, self.script, mode],
+                                                   log_path=self.log)
         self.addCleanup(proc.close)
         return proc
 
@@ -405,8 +489,46 @@ class ClientProcessTests(unittest.TestCase):
                     proc.start(timeout=30)
                 self.assertFalse(proc.alive)
 
+    def test_a_process_that_dies_at_start_says_what_it_last_printed(self):
+        proc = self._process("die-at-start")
+        with self.assertRaises(self.clone_client.CloneProcessError) as caught:
+            proc.start(timeout=30)
+        self.assertIn("exited before it was ready", str(caught.exception))
+        self.assertIn("simulated crash", str(caught.exception))
+
+    def test_what_the_process_prints_goes_to_the_log_file(self):
+        proc = self._process()
+        proc.start(timeout=30)
+        with open(self.log, encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("=== ", log)
+        self.assertIn("starting the voice-clone process (voice.wav, device auto)", log)
+        self.assertIn("INFO stand-in worker up", log)
+
+    def test_a_slow_start_is_logged_with_the_processs_last_words(self):
+        proc = self._process("slow-start")
+        with mock.patch.object(self.clone_client, "SLOW_START_NOTE_S", 0.4), \
+                self.assertLogs("TTS.clone", "WARNING") as logs:
+            info = proc.start(timeout=30)
+        self.assertTrue(info["ready"])
+        self.assertIn("still loading", logs.output[0])
+        self.assertIn("INFO loading the model", logs.output[0])
+
+    def test_a_process_that_never_gets_ready_is_stopped_with_its_last_words(self):
+        """What the user's Wave did: the process sat there, never ready, and
+        nothing anywhere said why."""
+        proc = self._process("never-ready")
+        started = time.monotonic()
+        with self.assertRaises(self.clone_client.CloneProcessError) as caught:
+            proc.start(timeout=2.0)
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertIn("wasn't ready after 2s", str(caught.exception))
+        self.assertIn("stuck at the licence question", str(caught.exception))
+        self.assertFalse(proc.alive)
+
     def test_the_real_worker_is_started_as_a_module_from_the_repo(self):
-        proc = self.clone_client.CloneVoiceProcess("xtts_v2", r"C:\voice.wav", device="cuda")
+        log = os.path.join(self.tmp, "wave_voice_clone.log")
+        proc = self.clone_client.CloneVoiceProcess("xtts_v2", r"C:\voice.wav", device="cuda", log_path=log)
         with mock.patch.object(self.clone_client.subprocess, "Popen", side_effect=OSError("simulated")) as popen:
             with self.assertRaises(self.clone_client.CloneProcessError):
                 proc.start(timeout=1)
@@ -414,6 +536,54 @@ class ClientProcessTests(unittest.TestCase):
         self.assertEqual(command[1:], ["-m", "voice.clone_worker", "--model", "xtts_v2", "--device", "cuda",
                                        "--reference", r"C:\voice.wav"])
         self.assertEqual(popen.call_args[1]["cwd"], REPO)
+        # Its output goes straight into the log file, not into a pipe Wave
+        # would have to keep reading.
+        self.assertNotEqual(popen.call_args[1]["stderr"], subprocess.PIPE)
+
+    def test_the_log_is_in_waves_data_folder_and_rolled_when_big(self):
+        from settings.config import config  # noqa: PLC0415
+        self.assertEqual(self.clone_client.default_log_path(), os.path.join(config.DATA_DIR, "wave_voice_clone.log"))
+        log = os.path.join(self.tmp, "wave_voice_clone.log")
+        with open(log, "wb") as f:
+            f.write(b"x" * (self.clone_client.LOG_MAX_BYTES + 1))
+        handle = self.clone_client._open_log(log)
+        handle.close()
+        self.assertEqual(os.path.getsize(log), 0)
+        self.assertEqual(os.path.getsize(log + ".1"), self.clone_client.LOG_MAX_BYTES + 1)
+
+
+_STDIN_CHILD = r'''
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from voice import clone_worker
+out = clone_worker._claim_stdout()
+inp = clone_worker._claim_stdin()
+try:
+    input("Do you agree to the licence? [y/n] ")
+    asked = "answered"
+except EOFError:
+    asked = "EOFError"
+line = inp.readline()
+clone_worker._send(out, {"asked": asked, "echo": json.loads(line) if line.strip() else None})
+'''
+
+
+class WorkerStdinTests(unittest.TestCase):
+    def test_a_question_a_library_asks_gets_no_answer_instead_of_waiting_forever(self):
+        """coqui-tts asks for XTTS-v2's licence with input(); in the worker
+        that question must fail at once, while the protocol still gets
+        Wave's requests."""
+        tmp = tempfile.mkdtemp(prefix="wave_clone_stdin_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        script = os.path.join(tmp, "child.py")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(_STDIN_CHILD)
+        proc = subprocess.Popen([sys.executable, script, REPO], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+        out, _ = proc.communicate(b'{"cmd": "say", "id": 1}\n', timeout=60)
+        reply = json.loads(out.decode("ascii").strip())
+        self.assertEqual(reply["asked"], "EOFError")
+        self.assertEqual(reply["echo"], {"cmd": "say", "id": 1})
 
 
 # --------------------------------------------------------------------------

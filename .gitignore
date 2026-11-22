@@ -14,6 +14,8 @@ __pycache__/
 database/wave_memory.db
 # the log and its rotated copies (.1, .2) - they hold what you said to Wave
 wave_system.log*
+# what the cloned voice's own process printed (Tier 31)
+wave_voice_clone.log*
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

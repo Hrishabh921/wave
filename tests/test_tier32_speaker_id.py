@@ -192,6 +192,88 @@ class LearningTests(_Base):
         self.assertEqual(len(self.v._learned), sid.MAX_LEARNED)
 
 
+def _mix(owner_part, other_part):
+    """An embedding that is partly the owner's 'voice' (220 Hz band) and
+    partly another one's (650 Hz band)."""
+    e = np.zeros(64, np.float32)
+    e[OWNER // 100], e[OTHER // 100] = owner_part, other_part
+    return e / np.linalg.norm(e)
+
+
+class LearningDriftTests(_Base):
+    """Tier 33: on the owner's laptop one learned piece sounded more like
+    someone else (0.31 to their voice note) than like the owner (0.28 to a
+    recording of them) - it had scored >= 0.40 only thanks to what was
+    learned before. Learning is now judged against the voice training."""
+
+    def setUp(self):
+        super().setUp()
+        self.v.set_training([_mix(1.0, 0.0)])
+
+    def test_a_score_earned_through_the_learned_part_alone_teaches_nothing(self):
+        self.v._learned = [_mix(0.6, 0.8)]                       # a borderline piece learned before
+        drifting = _mix(0.3, 0.95)                               # 0.30 to the training, 0.94 to it
+        score = max(float(drifting @ t) for t in self.v._targets())
+        self.assertGreater(score, 0.9)
+        self.assertFalse(self.v.learn(sid.SpeakerCheck(score, True, drifting)))
+        self.assertEqual(len(self.v._learned), 1)
+        self.assertTrue(self.v.learn(sid.SpeakerCheck(0.95, True, _mix(1.0, 0.1))))
+
+    def test_new_training_drops_learned_pieces_it_doesnt_agree_with(self):
+        self.v._learned = [_mix(1.0, 0.1), _mix(0.35, 0.94), _mix(0.9, 0.3)]
+        dropped = self.v.set_training([_mix(1.0, 0.0)], source="recordings")
+        self.assertEqual(dropped, 1)
+        again = self._verifier()
+        again.ready()
+        self.assertEqual(len(again._learned), 2)
+
+
+class OwnerRecordingsTests(_Base):
+    """Tier 33: recordings of the owner (a phone recording, a voice note) are
+    voice training too - kept apart from the mic training, averaged with it."""
+
+    def _recording(self):
+        return self.v.window_embeddings(tone(OWNER, 8.0, seed=11))
+
+    def test_recordings_join_the_mic_training_and_are_saved(self):
+        mic = len(self.v._mic)
+        self.v.set_training(self._recording(), source="recordings")
+        again = self._verifier()
+        self.assertTrue(again.ready())
+        size = again.training_size()
+        self.assertEqual(size["mic"], mic)
+        self.assertGreater(size["recordings"], 0)
+        self.assertEqual(len(again._targets()), 1)               # one average of both
+        self.assertTrue(again.check(pcm(tone(OWNER, 2.0, seed=12))).is_owner)
+        self.assertFalse(again.check(pcm(tone(OTHER, 2.0, seed=13))).is_owner)
+
+    def test_a_recording_alone_is_enough_to_turn_the_check_on(self):
+        alone = self._verifier(os.path.join(self.tmp, "recordings_only.npz"))
+        self.assertFalse(alone.ready())
+        alone.set_training(self._recording(), source="recordings")
+        alone.reset()
+        self.assertTrue(alone.ready())
+        self.assertFalse(alone.check(pcm(tone(OTHER, 2.0))).is_owner)
+
+    def test_each_part_is_replaced_on_its_own(self):
+        self.v.set_training(self._recording(), source="recordings")
+        recordings = len(self.v._recordings)
+        self.v.set_training(self.v.window_embeddings(tone(OWNER, 6.0, seed=14)))   # the mic part again
+        self.assertEqual(len(self.v._recordings), recordings)
+        self.assertEqual(self.v.training_scores([_mix(1.0, 0.0)], "recordings")[0] > 0.9, True)
+
+    def test_an_unknown_part_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.v.set_training(self._recording(), source="video")
+
+    def test_reset_forgets_the_recordings_too(self):
+        self.v.set_training(self._recording(), source="recordings")
+        self.v.reset()
+        self.assertEqual(self.v._recordings, [])
+        self.assertTrue(self.v.ready())                          # reloaded from disk
+        self.assertGreater(len(self.v._recordings), 0)
+
+
 class TrainingScriptTests(_Base):
     """scripts/train_my_voice.py. On the owner's laptop: their mic voice
     scored 0.16-0.19 against the (someone else's) sample, 0.71-0.74 once
@@ -247,6 +329,46 @@ class TrainingScriptTests(_Base):
         self.assertEqual(code, 0)
         self.assertFalse(os.path.exists(self.voiceprint))
         self.assertIsNone(self._verifier().check(pcm(tone(OWNER, 2.0))))
+
+    # Tier 33: --from-file
+    def _file(self, name, x):
+        path = os.path.join(self.tmp, name)
+        sf.write(path, x, RATE)
+        return path
+
+    def _speech(self, freq, seconds):
+        quiet = np.zeros(RATE // 2, np.float32)
+        return np.concatenate([np.concatenate([tone(freq, 2.5, seed=30 + i), quiet]) for i in range(int(seconds / 3))])
+
+    def test_a_recording_of_the_owner_is_added_to_the_training(self):
+        mic = len(self.v._mic)
+        code, out = self._main(["--from-file", self._file("r2.wav", self._speech(OWNER, 15))])
+        self.assertEqual(code, 0, out)
+        self.assertIn("against your mic training", out)
+        size = self._verifier().training_size()
+        self.assertEqual(size["mic"], mic)
+        self.assertGreater(size["recordings"], 0)
+
+    def test_someone_elses_recording_is_refused(self):
+        """What happened with the cloned voice's WhatsApp sample: it wasn't
+        the owner. A recording has to sound like the mic training."""
+        code, out = self._main(["--from-file", self._file("r1.wav", self._speech(OTHER, 15))])
+        self.assertEqual(code, 5, out)
+        self.assertIn("nothing saved", out)
+        self.assertEqual(self._verifier().training_size()["recordings"], 0)
+
+    def test_a_too_short_recording_saves_nothing(self):
+        code, out = self._main(["--from-file", self._file("short.wav", self._speech(OWNER, 6))])
+        self.assertEqual(code, 2, out)
+        self.assertEqual(self._verifier().training_size()["recordings"], 0)
+
+    def test_an_unreadable_file_says_so(self):
+        broken = os.path.join(self.tmp, "broken.mp4")
+        with open(broken, "wb") as f:
+            f.write(b"not audio at all")
+        code, out = self._main(["--from-file", broken])
+        self.assertEqual(code, 4, out)
+        self.assertIn("Couldn't read", out)
 
 
 class _Audio:

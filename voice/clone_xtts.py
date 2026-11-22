@@ -101,14 +101,58 @@ class XttsVoice:
         return np.asarray(out["wav"], dtype=np.float32)
 
 
+MODEL_FILES = ("config.json", "model.pth", "vocab.json")
+
+
+def cached_model_dir(model_name: str):
+    """The folder `model_name` (coqui's "tts_models/multilingual/
+    multi-dataset/xtts_v2") was already downloaded to - Hugging Face's
+    cache - found WITHOUT the network, or None: not downloaded yet, its
+    licence not accepted on this PC yet, or not a model coqui fetches from
+    Hugging Face. coqui-tts's own TTS(model_name) asks huggingface.co about
+    the model on every start, and first checks the licence file - asking
+    with input() when it isn't there; either can hold the cloned voice up.
+    Loading this folder by path does neither, so the licence is checked
+    here the way coqui checks it (its tos_agreed.txt, or
+    COQUI_TOS_AGREED=1)."""
+    try:
+        from huggingface_hub import snapshot_download  # noqa: PLC0415
+        from TTS.utils.manage import ModelManager  # noqa: PLC0415
+
+        model_type, lang, dataset, model = model_name.split("/")
+        manager = ModelManager(progress_bar=False)
+        item = manager.models_dict[model_type][lang][dataset][model]
+        repo_id = item.get("repo_id")
+        if not repo_id:
+            return None
+        if not ModelManager.tos_agreed(item, manager.output_prefix / f"{model_type}--{lang}--{dataset}--{model}"):
+            return None
+        folder = snapshot_download(repo_id, allow_patterns=item.get("allow"), ignore_patterns=item.get("ignore"),
+                                   local_files_only=True)
+    except Exception as e:
+        logger.info(f"No local copy of {model_name} to load directly ({type(e).__name__}: {e}).")
+        return None
+    folder = os.path.abspath(folder)
+    if all(os.path.isfile(os.path.join(folder, name)) for name in MODEL_FILES):
+        return folder
+    return None
+
+
 def load_xtts(model_name: str, device: str = "auto") -> XttsVoice:
-    """Loads XTTS-v2 through coqui-tts (downloading it the very first time,
-    ~1.8GB) on the resolved device."""
+    """Loads XTTS-v2 through coqui-tts on the resolved device - straight
+    from the local copy when there is one (cached_model_dir(): no network),
+    else by name, which downloads it the very first time (~1.8GB)."""
     import torch  # noqa: PLC0415
     from TTS.api import TTS  # noqa: PLC0415
 
     resolved = resolve_device(device, torch.cuda.is_available())
-    engine = TTS(model_name)
+    folder = cached_model_dir(model_name)
+    if folder is not None:
+        logger.info(f"Loading {model_name} from {folder} (no network).")
+        engine = TTS(model_path=os.path.join(folder, "model.pth"), config_path=os.path.join(folder, "config.json"),
+                     progress_bar=False)
+    else:
+        engine = TTS(model_name)
     if resolved != "cpu":
         engine = engine.to(resolved)
     synthesizer = engine.synthesizer

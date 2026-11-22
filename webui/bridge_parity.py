@@ -905,6 +905,10 @@ class ParityMixin:
             config.REDACT_SECRETS_ENABLED = bool(value)
         elif key == "tts_voice":
             tts_engine.set_voice(str(value))
+        elif key == "tts_fallback_voice":
+            # Tier 33: a "tts_voice" saved before the picker had the cloned
+            # voice - it only chose the voice that fills in for the clone.
+            tts_engine.set_fallback_voice(str(value))
         elif key == "tts_rate":
             tts_engine.set_rate(f"{int(value) - 100:+d}%")
         elif key == "tts_volume":
@@ -994,12 +998,21 @@ class ParityMixin:
             local_status = f"Using the voice configured at {config.TTS_LOCAL_MODEL_PATH}."
         else:
             local_status = "No local voice downloaded yet - WAVE will fetch one the first time it's needed."
-        return _ok(voice=getattr(tts_engine, "voice", ""), rate_slider=rate,
+        return _ok(voice=tts_engine.voice_choice, clone_label=tts_engine.clone_voice_label(),
+                   clone_status=tts_engine.clone_status(), clone_loading=tts_engine.clone_state() == "loading",
+                   rate_slider=rate,
                    volume_slider=int(getattr(tts_engine, "volume_level", 1.0) * 100),
                    wake_engine=(getattr(config, "WAKE_WORD_ENGINE", "auto") or "auto").lower(),
                    wake_sensitivity=sens, stt_language=getattr(stt_engine, "language", "en-IN"),
                    local_voice=bool(getattr(config, "TTS_LOCAL_AUTO_DOWNLOAD", False)),
                    local_voice_status=local_status, wake_status=self._wake_status_text())
+
+    @_safe
+    def get_clone_status(self):
+        """SettingsPanel.refresh_clone_status(): the line under the voice
+        picker, polled while the cloned voice is loading (Tier 33)."""
+        return _ok(text=tts_engine.clone_status(), loading=tts_engine.clone_state() == "loading",
+                   voice=tts_engine.voice_choice, clone_label=tts_engine.clone_voice_label())
 
     @_safe
     def save_custom_theme(self, theme: dict):
@@ -1039,7 +1052,9 @@ class ParityMixin:
                 config.TTS_CLONE_REFERENCE_PATH = voice_sample_path
                 tts_engine.reset_clone()   # Tier 31: stops the old sample's voice process
                 self.save_settings({"avatar_voice_reference_path": voice_sample_path})
-                tts_engine.warm_up_clone()
+                # Tier 33: a sample picked here means "speak in this voice" -
+                # it becomes the voice in Settings -> Voice (and loads now).
+                tts_engine.set_voice(_tts_module.CLONE_VOICE_ID)
                 note = " Aapki awaz clone hone ke liye set ho gayi hai."
             else:
                 note = f" (Voice sample '{voice_sample_path}' nahi mili - awaz clone nahi hui.)"
