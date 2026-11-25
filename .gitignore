@@ -24,6 +24,8 @@ conversation_summary.json
 audio_ducking.json
 # whether you like short or detailed answers, and your usual script (Tier 41)
 style_profile.json
+# phrases rendered once in the cloned voice (Tier 42) - that voice's audio
+voice_cache/
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

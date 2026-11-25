@@ -36,6 +36,7 @@ from brain import tool_select
 from brain.model_router import FAST, fast_model_for, model_router
 from brain.rolling_summary import rolling_summary
 from brain import response_cache
+from brain import exact_answers
 from brain.style_profile import style_profile
 from automation.audit import audit
 from automation import security_log
@@ -373,7 +374,10 @@ class WaveBrain:
                 f"{style_section}"
                 f"RULES:\n"
                 f"1. Never hallucinate sending messages or taking actions unless explicitly shown in chat history.\n"
-                f"2. NEVER invent or fake system information. If you don't have the data, say you don't know.\n"
+                f"2. NEVER invent or fake system information. If you don't have the data, say you don't know. "
+                f"For anything time-sensitive - latest, current, today's, prices, scores, news, who holds a "
+                f"post now - call get_live_information first instead of answering from memory: what you "
+                f"learned in training is months old.\n"
                 f"3. Match your depth to the question: answer simple questions in a couple of sentences, "
                 f"but for anything technical, multi-step, or open-ended, think it through properly and give "
                 f"a complete, well-reasoned answer - don't sacrifice correctness or thoroughness just to be brief.\n"
@@ -1851,6 +1855,12 @@ class WaveBrain:
                     trace.end_turn(outcome="blocked" if plan_outcome.pending_confirmation else "ok")
                     return plan_outcome.final_message
 
+            exact = exact_answers.answer(user_text) if attachment is None else None   # Tier 42
+            if exact:
+                db.save_message("assistant", exact)
+                trace.annotate(route="exact_answer")
+                trace.end_turn(outcome="ok")
+                return exact
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             cached = self._cached_answer(user_text, attachment)   # Tier 40
             if cached:
@@ -2130,6 +2140,14 @@ class WaveBrain:
                     yield plan_outcome.final_message
                     return
 
+            exact = exact_answers.answer(user_text) if attachment is None else None   # Tier 42
+            if exact:
+                db.save_message("assistant", exact)
+                trace.annotate(route="exact_answer")
+                trace.end_turn(outcome="ok")
+                finished = True
+                yield exact
+                return
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             cached = self._cached_answer(user_text, attachment)   # Tier 40
             if cached:

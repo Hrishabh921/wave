@@ -149,6 +149,11 @@ HAS_COQUI_TTS = importlib.util.find_spec("TTS") is not None
 # voice_choice), next to the edge-tts voice ids - and Wave's default voice
 # whenever a voice sample is set.
 CLONE_VOICE_ID = "clone"
+# Tier 42: fixed phrases Wave says often (the wake / sleep announcements),
+# rendered in the cloned voice once and kept on disk, so they play at once -
+# even right after a restart, before XTTS-v2 has loaded (SARA prewarms its
+# acknowledgements the same way).
+CLONE_PREWARM_PHRASES = ("Systems active.", "Standing by.")
 
 # Tier 2: sentence-boundary splitter for speak_stream() - same approach
 # _speak_via_sapi already uses below (a period/question mark/exclamation
@@ -481,6 +486,7 @@ class VoiceEngine:
         self._clone_pool = None
         self._clone_futures = {}
         self._clone_warm = None
+        self._clone_phrases = {}       # Tier 42: key -> (int16 pcm, rate)
 
         # Tier 12: one output stream kept open across utterances - see
         # _persistent_output() and voice/audio_out.py.
@@ -1943,7 +1949,65 @@ class VoiceEngine:
             return self._clone_warm
 
     def _clone_prepare(self) -> bool:
-        return self._get_clone_engine() is not None
+        ready = self._get_clone_engine() is not None
+        if ready:
+            self._prewarm_clone_phrases()
+        return ready
+
+    # -- Tier 42: fixed phrases, rendered once ----------------------------
+    @staticmethod
+    def _clone_phrase_dir() -> str:
+        return os.path.join(config.DATA_DIR, "voice_cache", "clone")
+
+    def _clone_phrase_key(self, text: str, lang: str):
+        """Changes with the voice sample (path, size, modification time)."""
+        ref = (getattr(config, "TTS_CLONE_REFERENCE_PATH", "") or "").strip()
+        st = os.stat(ref)
+        raw = f"{os.path.abspath(ref)}|{st.st_mtime_ns}|{st.st_size}|{lang}|{text}"
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+    def _clone_phrase_cached(self, text: str, lang: str):
+        """(pcm, rate) of a prewarmed phrase in the current cloned voice, or None."""
+        if not HAS_NUMPY or text not in {clean_for_speech(p) for p in CLONE_PREWARM_PHRASES}:
+            return None
+        try:
+            key = self._clone_phrase_key(text, lang)
+        except OSError:
+            return None
+        hit = self._clone_phrases.get(key)
+        if hit is None:
+            path = os.path.join(self._clone_phrase_dir(), key + ".npz")
+            if os.path.isfile(path):
+                try:
+                    with np.load(path) as d:
+                        hit = (d["pcm"].astype(np.int16), int(d["rate"]))
+                    self._clone_phrases[key] = hit
+                except Exception:
+                    hit = None
+        return hit
+
+    def _prewarm_clone_phrases(self) -> None:
+        """On the clone worker right after it loads: renders the fixed
+        phrases that aren't cached yet - unless real speech is waiting."""
+        if not getattr(config, "TTS_CLONE_PREWARM", True):
+            return
+        for phrase in CLONE_PREWARM_PHRASES:
+            clean = clean_for_speech(phrase)
+            lang = language.classify(clean)
+            if self._clone_phrase_cached(clean, lang) is not None:
+                continue
+            if self._clone_futures or self._utterance_active:
+                return                                     # live speech first
+            rendered = self._clone_render(clean, lang, self._interrupt_gen)
+            if rendered is None:
+                return
+            try:
+                key = self._clone_phrase_key(clean, lang)
+                self._clone_phrases[key] = rendered
+                os.makedirs(self._clone_phrase_dir(), exist_ok=True)
+                np.savez(os.path.join(self._clone_phrase_dir(), key + ".npz"), pcm=rendered[0], rate=rendered[1])
+            except Exception:
+                logger.debug("couldn't keep a prewarmed phrase", exc_info=True)
 
     def reset_clone(self) -> None:
         """The voice sample changed ("Build avatar"): stop the old clone
@@ -1954,6 +2018,7 @@ class VoiceEngine:
         count as current and is replaced on first use."""
         engine, self._clone_engine = self._clone_engine, None
         self._clone_load_failed = False
+        self._clone_phrases = {}
         if engine is not None:
             engine.close()
 
@@ -1971,6 +2036,8 @@ class VoiceEngine:
         clean = clean_for_speech(text)
         if not clean:
             return False
+        if self._clone_phrase_cached(clean, language.classify(clean)) is not None:
+            return True                                    # Tier 42: already rendered
         with self._prefetch_lock:
             if clean in self._clone_futures:
                 return True
@@ -2058,6 +2125,15 @@ class VoiceEngine:
         sentence goes out in the edge-tts voice instead of waiting."""
         if not HAS_NUMPY:
             return False
+        # Tier 42: a prewarmed fixed phrase plays at once - even while the
+        # clone process is still loading after a restart.
+        if self._clone_reference_ready():
+            cached = self._clone_phrase_cached(text, lang)
+            if cached is not None:
+                try:
+                    return self._play_pcm(*cached)
+                except Exception as e:
+                    logger.warning(f"Playing a prewarmed phrase failed: {e}")
         if self._clone_engine_if_ready() is None:
             return False
         rendered = self._clone_wait(self._clone_take(text, lang))

@@ -48,6 +48,10 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("LLM_STYLE_PROFILE", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.LLM_STYLE_PROFILE = False
+# Tier 42: and never keep a fake voice process's audio in a real voice_cache.
+os.environ.setdefault("TTS_CLONE_PREWARM", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.TTS_CLONE_PREWARM = False
 
 
 def make_tmpdir(testcase) -> str:
