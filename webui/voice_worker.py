@@ -22,6 +22,7 @@ import time
 from datetime import datetime, timedelta
 
 from voice.tts import tts_engine
+from voice.ducking import ducker
 from voice.stt import stt_engine
 from voice import commands as voice_commands
 from voice import speech_filter
@@ -286,6 +287,7 @@ class WebContinuousMicWorker(threading.Thread):
 
     def set_mode(self, new_mode, announce: bool = True):
         self.mode = new_mode
+        ducker.set_awake(new_mode == "AWAKE")   # Tier 39: other apps down while AWAKE
         if new_mode == "AWAKE":
             self._last_activity = time.monotonic()
         self._sync_captions()
@@ -293,6 +295,7 @@ class WebContinuousMicWorker(threading.Thread):
 
     def stop(self):
         self.is_running = False
+        ducker.set_awake(False)                 # Tier 39: their volume back
 
 
 class WebAIStreamWorker(threading.Thread):

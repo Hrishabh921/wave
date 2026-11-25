@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from voice.tts import tts_engine
+from voice.ducking import ducker
 from voice.stt import stt_engine
 from voice import commands as voice_commands
 from voice import speech_filter
@@ -312,12 +313,14 @@ class ContinuousMicWorker(QThread):
 
     def set_mode(self, new_mode, announce: bool = True):
         self.mode = new_mode
+        ducker.set_awake(new_mode == "AWAKE")   # Tier 39: other apps down while AWAKE
         self._sync_captions()
         self.mode_update.emit(self.mode)
         self.mode_changed.emit(self.mode, announce)
 
     def stop(self):
         self.is_running = False
+        ducker.set_awake(False)                 # Tier 39: their volume back
 
 
 class AIWorker(QThread):

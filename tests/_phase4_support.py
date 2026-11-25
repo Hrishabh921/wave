@@ -34,6 +34,11 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("LLM_ROLLING_SUMMARY", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.LLM_ROLLING_SUMMARY = False
+# Tier 39: and never turn the developer's real apps down (a mic worker going
+# AWAKE in a test would). tests/test_tier39_ducking.py uses a fake mixer.
+os.environ.setdefault("AUDIO_DUCKING", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.AUDIO_DUCKING = False
 
 
 def make_tmpdir(testcase) -> str:

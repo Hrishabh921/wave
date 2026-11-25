@@ -238,6 +238,11 @@ class Config:
     # and the two are joined (voice/endpoint_cues.py). false = off.
     STT_CONTINUATION = os.getenv("STT_CONTINUATION", "true").strip().lower() not in ("false", "0", "no")
     STT_CONTINUATION_WAIT_S = _float_env("STT_CONTINUATION_WAIT_S", "1.6", min=0.3, max=5)
+    # Tier 39: while Wave is AWAKE or speaking, other apps (YouTube, Spotify
+    # ...) play at this share of their own volume, and get it back after
+    # (voice/ducking.py - per-app volume, Wave itself never touched).
+    AUDIO_DUCKING = os.getenv("AUDIO_DUCKING", "true").strip().lower() not in ("false", "0", "no")
+    AUDIO_DUCK_LEVEL = _float_env("AUDIO_DUCK_LEVEL", "0.3", min=0.0, max=1.0)
     # Tier 37: names put in Whisper's prompt so it spells them right
     # (voice/vocabulary.py) - from Wave's memory and this list (comma-
     # separated: "Priya, Jaipur, Arijit Singh"). STT_VOCABULARY=off: neither.
