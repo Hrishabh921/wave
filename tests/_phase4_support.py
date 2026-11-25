@@ -29,6 +29,11 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("STT_VOCABULARY", "off")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.STT_VOCABULARY = "off"
+# Tier 38: nor summarise a conversation with a real model call in the
+# background. tests/test_tier38_rolling_summary.py turns it on with its own.
+os.environ.setdefault("LLM_ROLLING_SUMMARY", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.LLM_ROLLING_SUMMARY = False
 
 
 def make_tmpdir(testcase) -> str:

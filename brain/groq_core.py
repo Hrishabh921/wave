@@ -34,6 +34,7 @@ from database.db_manager import db
 from brain.skills_registry import skills, skill, BUILTIN_SOURCE
 from brain import tool_select
 from brain.model_router import FAST, fast_model_for, model_router
+from brain.rolling_summary import rolling_summary
 from automation.audit import audit
 from automation import security_log
 from automation.undo import undo_manager, startup_maintenance
@@ -348,6 +349,13 @@ class WaveBrain:
         # check, the same way remembered facts don't need recall_memory.
         todays_events = CalendarManager.get_events_for_prompt()
         calendar_section = f"\nTODAY'S CALENDAR:\n{todays_events}\n" if todays_events else ""
+        # Tier 38: what was said before the messages that still go with this
+        # request (brain/rolling_summary.py) - and fold the ones that just
+        # dropped out, in the background, for next time.
+        summary = rolling_summary.summary_line()
+        if summary:
+            calendar_section += f"\nEARLIER IN THIS CONVERSATION (older messages, summarised):\n{summary}\n"
+        rolling_summary.schedule_update()
 
         return {
             "role": "system",

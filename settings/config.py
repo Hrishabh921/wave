@@ -605,6 +605,12 @@ class Config:
     # newest first; ~4 characters a token). Long old replies used to add
     # thousands of tokens to every request. 0 = no limit.
     LLM_HISTORY_CHARS = _int_env("LLM_HISTORY_CHARS", "4000", min=0, max=200000)
+    # Tier 38: messages that drop out of that history are folded into a short
+    # running summary of the conversation (one background call to the fast
+    # model per few messages - brain/rolling_summary.py), which goes in the
+    # system prompt. false = older messages just drop out, as before.
+    LLM_ROLLING_SUMMARY = os.getenv("LLM_ROLLING_SUMMARY", "true").strip().lower() not in ("false", "0", "no")
+    LLM_SUMMARY_MAX_CHARS = _int_env("LLM_SUMMARY_MAX_CHARS", "600", min=100, max=4000)
 
     # ── Phase 6: governed tool-calling loop ─────────────────────────────
     # Before this, think() made exactly one round of tool calls no matter

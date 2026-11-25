@@ -18,6 +18,8 @@ wave_system.log*
 wave_voice_clone.log*
 # what the model router learned from your corrections (Tier 34)
 model_router.json
+# the running summary of your current conversation (Tier 38)
+conversation_summary.json
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

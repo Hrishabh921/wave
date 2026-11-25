@@ -459,6 +459,47 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to save message: {e}")
 
+    def chat_window_start_id(self, window: int):
+        """Tier 38: the id of the oldest of the newest `window` messages (the
+        ones still sent to the model), or None when there aren't that many."""
+        if not self.history_enabled:
+            return None
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM chat_history ORDER BY id DESC LIMIT 1 OFFSET ?", (max(0, int(window) - 1),))
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Failed to read the chat window: {e}")
+            return None
+
+    def latest_chat_id(self):
+        """Tier 38: the newest chat message's id, or None when there's none."""
+        if not self.history_enabled:
+            return None
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT MAX(id) FROM chat_history")
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Failed to read the chat history: {e}")
+            return None
+
+    def get_chat_messages_between(self, after_id: int, before_id: int) -> list:
+        """Tier 38: (id, role, message, timestamp) for after_id < id < before_id, oldest first."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, role, message, timestamp FROM chat_history WHERE id > ? AND id < ? "
+                               "ORDER BY id", (int(after_id), int(before_id)))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to read chat messages: {e}")
+            return []
+
     def get_chat_history(self, limit: int = 10) -> list:
         """Retrieves recent chat history for AI context."""
         if not self.history_enabled:
