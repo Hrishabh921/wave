@@ -233,6 +233,11 @@ class Config:
     # Silence that ends a phrase. Lower answers sooner but risks cutting you
     # off mid-thought; 450 ms is measured exactly (20 ms frames).
     STT_END_SILENCE_MS = _int_env("STT_END_SILENCE_MS", "450", min=200, max=3000)
+    # Tier 36: a phrase that sounds unfinished ("...aur", "...ki", "remind me
+    # to", a trailing "...") is held this long for the rest of the sentence,
+    # and the two are joined (voice/endpoint_cues.py). false = off.
+    STT_CONTINUATION = os.getenv("STT_CONTINUATION", "true").strip().lower() not in ("false", "0", "no")
+    STT_CONTINUATION_WAIT_S = _float_env("STT_CONTINUATION_WAIT_S", "1.6", min=0.3, max=5)
     # Audio kept from just before speech was detected (no clipped first syllable).
     STT_PREROLL_MS = _int_env("STT_PREROLL_MS", "300", min=0, max=1000)
     # A safety net only - there is no fixed phrase cap any more.

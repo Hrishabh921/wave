@@ -2,6 +2,10 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 36 — Don't cut the speaker off mid-sentence (2026-11-25)
+
+Wave ended an utterance after 450 ms of silence, whatever had been said, so a pause inside a sentence - "mujhe kal subah ... yaad dilana ki doctor ke paas jana hai" - became two commands: the first half was answered on its own, the rest lost or misread. SARA's adaptive endpointing looks at the words. Wave now does that one step later, on the transcript (`voice/stt.py`'s `_continue_unfinished()`, new `voice/endpoint_cues.py`): a transcript that sounds cut off - ending on "and/or/but/to/the/because/um", "aur/ki/ke/ka/ko/se/mein/lekin/matlab/uske baad", "और/की/के/तो", or trailing off with "..." or a comma - waits up to `STT_CONTINUATION_WAIT_S` (1.6 s) for the rest, longer while the speaker is still talking (`CaptureEngine.speaking`, at most 12 s), and the two are joined into one command (up to 3 joins). A question ending in "?" counts as finished, and so do phrasal endings like "turn the wifi on", "log in", "help me", "close this tab". Not while Wave is talking; the rest goes through the speaker check like anything else, and isn't wake-gated (it's the rest of a command that was). `STT_CONTINUATION=false` turns it off. 10 new tests in `tests/test_tier36_endpointing.py`.
+
 ## Tier 35 — Memory 2.0: a past, real dates, one-hop recall, and forgetting that sticks (2026-11-25)
 
 SARA's Memory 2.0 keeps what a fact used to be, understands time, joins related facts and makes "forget" stick (its own bench: 0% false memories, 0% forgetting leaks). Wave's memory was a flat key -> value table where a new value simply overwrote the old one. Now (`database/db_manager.py`, new `brain/memory_time.py`):

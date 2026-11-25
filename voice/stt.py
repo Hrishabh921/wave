@@ -9,6 +9,7 @@ from voice.tts import tts_engine
 from voice.aec import aec_processor
 from voice.buffers import get_vad
 from voice import transcript_filter
+from voice import endpoint_cues
 # Tier 13: `import voice.language as language`, not `from voice import
 # language` - the latter resolves via hasattr() on the already-cached
 # `voice` package object, which skips re-importing the submodule even
@@ -537,7 +538,66 @@ class SpeechReceiver:
             result.snr_db = utt.snr_db
             result.tts_overlap = tts_was_speaking
             result.truncated = utt.truncated
+            result = self._continue_unfinished(engine, result)
         return result
+
+    def _continue_unfinished(self, engine, first):
+        """Tier 36: SARA-style adaptive endpointing, one step later. A
+        transcript that sounds cut off mid-sentence ("mujhe kal subah...",
+        "remind me to", "...aur") waits up to STT_CONTINUATION_WAIT_S for
+        the rest - longer while the speaker is still talking - and the two
+        are joined into one command (up to 3 joins). Not while Wave is
+        talking. What follows goes through the speaker check like anything
+        else, and isn't wake-gated: it's the rest of a command that was."""
+        if not getattr(config, "STT_CONTINUATION", True):
+            return first
+        merged = first
+        for _ in range(3):
+            if merged.tts_overlap or tts_engine.is_speaking or not endpoint_cues.sounds_unfinished(str(merged)):
+                return merged
+            utt = self._next_part(engine, float(getattr(config, "STT_CONTINUATION_WAIT_S", 1.6)))
+            if utt is None:
+                logger.info(f"'{merged}' sounded unfinished, but nothing followed - going with it")
+                return merged
+            audio = sr.AudioData(utt.pcm, utt.sample_rate, 2)
+            timing = {"speech_end": utt.speech_end, "captured_at": utt.ended_at}
+            more = self._gate_and_recognize(audio, None, bool(tts_engine.is_speaking), timing,
+                                            audio_s=utt.duration_s, snr_db=utt.snr_db)
+            if not isinstance(more, Transcript) or not str(more).strip():
+                return merged
+            joined = Transcript(endpoint_cues.join(str(merged), str(more)), wake_detected=merged.wake_detected,
+                                engine=merged.engine or more.engine, speech_end=more.speech_end,
+                                captured_at=more.captured_at, recognized_at=more.recognized_at,
+                                wake_score=merged.wake_score)
+            confidences = [c for c in (merged.confidence, more.confidence) if c is not None]
+            joined.confidence = min(confidences) if confidences else None
+            joined.snr_db = merged.snr_db
+            joined.tts_overlap = merged.tts_overlap
+            joined.truncated = bool(merged.truncated or utt.truncated)
+            joined.speaker_score = merged.speaker_score if merged.speaker_score is not None else more.speaker_score
+            logger.info(f"Joined an unfinished sentence: '{merged}' + '{more}'")
+            merged = joined
+        return merged
+
+    @staticmethod
+    def _next_part(engine, wait_s: float):
+        """The next utterance within wait_s - or, if the speaker is still
+        talking when that runs out, once they stop (12 s at most)."""
+        deadline = time.monotonic() + wait_s
+        hard_stop = time.monotonic() + 12.0
+        while True:
+            utt = engine.next_utterance(timeout=max(0.05, deadline - time.monotonic()))
+            if utt is not None:
+                return utt
+            now = time.monotonic()
+            if getattr(engine, "speaking", False) and now < hard_stop:
+                deadline = now + 0.5        # still talking: wait for that utterance to end
+                continue
+            if now < deadline:
+                continue
+            # One last look: an utterance can end (and be queued) just as
+            # the wait above runs out.
+            return engine.next_utterance(timeout=0.1)
 
     # ------------------------------------------------------------------
     # The original path

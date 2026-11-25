@@ -108,6 +108,11 @@ class CaptureEngine:
         return self._running.is_set()
 
     @property
+    def speaking(self) -> bool:
+        """Tier 36: an utterance is being captured right now (not ended yet)."""
+        return bool(self._endpointer.in_speech)
+
+    @property
     def capture_rate(self) -> int:
         """The rate the device was opened at (resampled to 16 kHz if different)."""
         return self._capture_rate
