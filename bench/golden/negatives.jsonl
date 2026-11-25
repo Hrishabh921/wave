@@ -78,3 +78,5 @@
 {"t": "I think my code has a bug somewhere", "i": "chat", "l": "en", "n": "contains nothing router-relevant despite the technical topic"}
 {"t": "do you know any good podcasts", "i": "chat", "l": "en"}
 {"t": "what's the fastest land animal", "i": "chat", "l": "en"}
+{"t": "what is dark mode", "i": "chat", "l": "en", "n": "Tier 44: a mention, not a command"}
+{"t": "is dark mode better for the eyes", "i": "chat", "l": "en", "n": "Tier 44"}

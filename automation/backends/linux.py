@@ -12,7 +12,7 @@ import shutil
 import webbrowser
 from typing import Optional
 
-from automation.backends.base import NATIVE_SHUTDOWN_CANCELLED_MSG, NotSupported, PlatformBackend, Shell
+from automation.backends.base import NATIVE_SHUTDOWN_CANCELLED_MSG, RADIO_LABELS, NotSupported, PlatformBackend, Shell
 
 logger = logging.getLogger("AppControl")
 
@@ -370,6 +370,56 @@ class LinuxBackend(PlatformBackend):
             raise
         except Exception as e:
             raise NotSupported(f"Setting screen brightness didn't work: {e}") from e
+
+    # ---- radios and the light/dark theme (Tier 44) ----
+    # NetworkManager's nmcli for Wi-Fi, rfkill for Bluetooth (no root for
+    # the user's own soft block), GNOME's color-scheme for the theme.
+    def get_radio(self, kind: str) -> bool:
+        if kind == "wifi":
+            if not self.sh.which("nmcli"):
+                raise self._unsupported("Reading the Wi-Fi state (needs nmcli)")
+            rc, out = self.sh.run(["nmcli", "radio", "wifi"])
+            if rc != 0:
+                raise NotSupported("Couldn't read the Wi-Fi state.")
+            return out.strip().lower() == "enabled"
+        if not self.sh.which("rfkill"):
+            raise self._unsupported("Reading the Bluetooth state (needs rfkill)")
+        rc, out = self.sh.run(["rfkill", "list", "bluetooth"])
+        if rc != 0 or "blocked" not in out.lower():
+            raise NotSupported("Couldn't read the Bluetooth state.")
+        return "soft blocked: yes" not in out.lower() and "hard blocked: yes" not in out.lower()
+
+    def set_radio(self, kind: str, on: bool) -> str:
+        label = RADIO_LABELS.get(kind, kind)
+        if kind == "wifi":
+            if not self.sh.which("nmcli"):
+                raise self._unsupported("Turning Wi-Fi on or off (needs nmcli)")
+            argv = ["nmcli", "radio", "wifi", "on" if on else "off"]
+        else:
+            if not self.sh.which("rfkill"):
+                raise self._unsupported("Turning Bluetooth on or off (needs rfkill)")
+            argv = ["rfkill", "unblock" if on else "block", "bluetooth"]
+        rc, _ = self.sh.run(argv)
+        if rc != 0:
+            raise NotSupported(f"Couldn't turn {label} {'on' if on else 'off'}.")
+        return f"{label} is now {'on' if on else 'off'}."
+
+    def get_dark_mode(self) -> bool:
+        if not self.sh.which("gsettings"):
+            raise self._unsupported("Reading the light/dark theme (needs gsettings)")
+        rc, out = self.sh.run(["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"])
+        if rc != 0:
+            raise NotSupported("Couldn't read the light/dark theme.")
+        return "dark" in out.lower()
+
+    def set_dark_mode(self, on: bool) -> str:
+        if not self.sh.which("gsettings"):
+            raise self._unsupported("Switching between light and dark mode (needs gsettings)")
+        rc, _ = self.sh.run(["gsettings", "set", "org.gnome.desktop.interface", "color-scheme",
+                             "prefer-dark" if on else "default"])
+        if rc != 0:
+            raise NotSupported("Couldn't switch the theme.")
+        return f"Switched to {'dark' if on else 'light'} mode."
 
     # ---- per-window management (Tier 8) ----
     # wmctrl for list/focus/minimize (a small, standard EWMH client,

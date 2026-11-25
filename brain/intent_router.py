@@ -283,9 +283,49 @@ def _toggle_hardware(lower: str) -> RouteResult:
              "band karo", "band kar do", "chalu karo", "chalu kar do", "on karo", "off karo",
              "on kar do", "off kar do", "बंद करो", "चालू करो", "ऑन करो", "ऑफ करो")
     if any(d in lower for d in devices) and any(v in lower for v in verbs):
-        return "toggle_hardware", {"instruction": lower.replace("wi-fi", "wifi")
-                                   .replace("वाईफाई", "wifi").replace("ब्लूटूथ", "bluetooth")
-                                   .replace("हॉटस्पॉट", "hotspot")}
+        instruction = (lower.replace("wi-fi", "wifi").replace("वाईफाई", "wifi").replace("ब्लूटूथ", "bluetooth")
+                       .replace("हॉटस्पॉट", "hotspot"))
+        # Tier 44: one radio and a clear on/off -> the skill that really
+        # switches it (and asks first before turning one OFF); the hotspot,
+        # both radios at once, or no clear direction stay toggle_hardware.
+        kinds = [k for k in ("wifi", "bluetooth") if k in instruction]
+        on = any(v in lower for v in _RADIO_ON_VERBS)
+        off = any(v in lower for v in _RADIO_OFF_VERBS)
+        if len(kinds) == 1 and "hotspot" not in instruction and on != off:
+            return f"turn_{kinds[0]}_{'on' if on else 'off'}", {}
+        if len(kinds) > 1:
+            return None          # both radios: the model calls each one's own (confirm-gated) tool
+        return "toggle_hardware", {"instruction": instruction}
+    return None
+
+
+_RADIO_ON_VERBS = ("turn on", "switch on", "enable", "chalu karo", "chalu kar do", "on karo", "on kar do",
+                   "चालू करो", "ऑन करो")
+_RADIO_OFF_VERBS = ("turn off", "switch off", "disable", "band karo", "band kar do", "off karo", "off kar do",
+                    "बंद करो", "ऑफ करो")
+
+
+# Tier 44: the light/dark theme. A bare "dark mode" is a command; a sentence
+# merely mentioning it ("what is dark mode?") isn't - so the phrase has to
+# be the whole message or come with a verb. Light first: "dark mode band
+# karo" means light mode.
+_LIGHT_EXACT = ("light mode", "light theme", "dark mode off", "लाइट मोड")
+_LIGHT_VERBS = ("turn on light mode", "switch to light mode", "enable light mode", "turn off dark mode",
+                "disable dark mode", "dark mode off karo", "dark mode band karo", "dark mode band kar do",
+                "dark mode hatao", "light mode lagao", "light mode on karo", "light mode kar do",
+                "light mode chalu karo", "डार्क मोड बंद करो", "लाइट मोड चालू करो", "लाइट मोड लगाओ")
+_DARK_EXACT = ("dark mode", "dark theme", "dark mode on", "डार्क मोड")
+_DARK_VERBS = ("turn on dark mode", "switch to dark mode", "enable dark mode", "set dark mode", "dark mode on karo",
+               "dark mode chalu karo", "dark mode lagao", "dark mode kar do", "dark theme lagao",
+               "डार्क मोड चालू करो", "डार्क मोड लगाओ")
+
+
+def _theme_mode(lower: str) -> RouteResult:
+    text = lower.strip().rstrip(".!")
+    if text in _LIGHT_EXACT or any(p in lower for p in _LIGHT_VERBS):
+        return "switch_to_light_mode", {}
+    if text in _DARK_EXACT or any(p in lower for p in _DARK_VERBS):
+        return "switch_to_dark_mode", {}
     return None
 
 
@@ -988,6 +1028,7 @@ _RULES: List[_Rule] = [
         ),
     )),
     _Rule("toggle_hardware", _toggle_hardware),
+    _Rule("theme_mode", _theme_mode),          # Tier 44
     # Tier 11: before open_app, which would otherwise take "open display
     # settings" as an app called "display settings".
     _Rule("open_settings", _open_settings),

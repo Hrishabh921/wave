@@ -286,6 +286,15 @@ TIERS: Dict[str, int] = {
     "open_bluetooth_settings": T1,
     "open_network_settings": T1,
     "open_wifi_settings": T1,
+    # Tier 44: the radios and the theme, switched for real (undoable). OFF
+    # is T2 - it asks first: no Wi-Fi means no AI answers, and Bluetooth off
+    # drops a Bluetooth headset's mic.
+    "turn_wifi_on": T1,
+    "turn_wifi_off": T2,
+    "turn_bluetooth_on": T1,
+    "turn_bluetooth_off": T2,
+    "switch_to_dark_mode": T1,
+    "switch_to_light_mode": T1,
     "open_update_settings": T1,
     "open_apps_settings": T1,
     "open_personalization_settings": T1,

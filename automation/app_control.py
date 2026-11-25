@@ -339,6 +339,17 @@ class AppController:
 
     @classmethod
     def toggle_hardware(cls, command: str) -> str:
+        # Tier 44: a single Wi-Fi/Bluetooth radio and a clear direction is
+        # switched for real (set_radio) - never the old blind toggle, which
+        # turned an already-on radio OFF. Turning one off has its own
+        # confirm-gated tool, so it isn't done from here.
+        kinds, on = _radio_request(command) if _system_toggles_on() else ([], None)
+        if len(kinds) == 1 and on is True:
+            return cls.set_radio(kinds[0], True)
+        if kinds and on is False:
+            names = " and ".join("Wi-Fi" if k == "wifi" else "Bluetooth" for k in kinds)
+            return (f"To turn {names} off, ask for it by name ('turn {kinds[0].replace('wifi', 'Wi-Fi')} off') - "
+                    "I'll check with you first, since it can cut you off.")
         with _audit().action("toggle_hardware", {"instruction": command}) as act:
             try:
                 return act.done(cls._backend().toggle_radio(command))
@@ -711,6 +722,51 @@ class AppController:
     @classmethod
     def brightness_min(cls) -> str:
         return cls.set_brightness(0)
+
+    # ---- radios and the light/dark theme (Tier 44) ----
+    @classmethod
+    def set_radio(cls, kind: str, on: bool) -> str:
+        """Wi-Fi / Bluetooth on or off, undoable (the state before goes back)."""
+        tool = f"turn_{kind}_{'on' if on else 'off'}"
+        with _audit().action(tool, {}) as act:
+            if not _system_toggles_on():
+                return act.fail("Switching Wi-Fi/Bluetooth is turned off here (SYSTEM_TOGGLES=false).")
+            backend = cls._backend()
+            try:
+                try:
+                    previous = backend.get_radio(kind)
+                except NotSupported:
+                    previous = None
+                result = backend.set_radio(kind, bool(on))
+            except NotSupported as e:
+                return act.fail(str(e))
+            if previous is not None and previous != bool(on):
+                label = "on" if previous else "off"
+                act.set_undo("restore_radio", {"kind": kind, "on": previous},
+                             f"Turn {kind.replace('wifi', 'Wi-Fi').replace('bluetooth', 'Bluetooth')} back {label}")
+            return act.ok(result)
+
+    @classmethod
+    def set_dark_mode(cls, on: bool) -> str:
+        tool = "switch_to_dark_mode" if on else "switch_to_light_mode"
+        with _audit().action(tool, {}) as act:
+            if not _system_toggles_on():
+                return act.fail("Switching the theme is turned off here (SYSTEM_TOGGLES=false).")
+            backend = cls._backend()
+            try:
+                try:
+                    previous = backend.get_dark_mode()
+                except NotSupported:
+                    previous = None
+                if previous is not None and previous == bool(on):
+                    return act.ok(f"It's already in {'dark' if on else 'light'} mode.")
+                result = backend.set_dark_mode(bool(on))
+            except NotSupported as e:
+                return act.fail(str(e))
+            if previous is not None:
+                act.set_undo("restore_theme", {"dark": previous},
+                             f"Switch back to {'dark' if previous else 'light'} mode")
+            return act.ok(result)
 
     # ---- modes (Tier 16) - see _MODE_BUNDLES' own comment above ----
     @classmethod
@@ -1487,6 +1543,47 @@ def _undo_restore_brightness(payload: dict):
         return False, str(e)
 
 
+_RADIO_ON_WORDS = ("turn on", "switch on", "enable", "chalu", " on", "चालू", "ऑन")
+_RADIO_OFF_WORDS = ("turn off", "switch off", "disable", "band", " off", "बंद", "ऑफ")
+
+
+def _system_toggles_on() -> bool:
+    """Tier 44: SYSTEM_TOGGLES - the real Wi-Fi/Bluetooth/theme switches.
+    The test suite turns it off, so no test can flip a real radio."""
+    from settings.config import config  # noqa: PLC0415
+    return bool(getattr(config, "SYSTEM_TOGGLES", True))
+
+
+def _radio_request(command: str):
+    """Tier 44: ([radios named], True/False/None) from a toggle_hardware
+    instruction - None when it doesn't clearly say on or off."""
+    text = " " + (command or "").lower().replace("wi-fi", "wifi").replace("वाईफाई", "wifi") \
+        .replace("ब्लूटूथ", "bluetooth") + " "
+    if "hotspot" in text or "हॉटस्पॉट" in text:
+        return [], None
+    kinds = [k for k in ("wifi", "bluetooth") if k in text]
+    on = any(w in text for w in _RADIO_ON_WORDS)
+    off = any(w in text for w in _RADIO_OFF_WORDS)
+    return kinds, (on if on != off else None)
+
+
+def _undo_restore_radio(payload: dict):
+    kind = payload.get("kind")
+    if kind not in ("wifi", "bluetooth"):
+        return False, "Nothing to put back."
+    try:
+        return True, get_backend().set_radio(kind, bool(payload.get("on")))
+    except NotSupported as e:
+        return False, str(e)
+
+
+def _undo_restore_theme(payload: dict):
+    try:
+        return True, get_backend().set_dark_mode(bool(payload.get("dark")))
+    except NotSupported as e:
+        return False, str(e)
+
+
 def _undo_restore_window_position(payload: dict):
     name = payload.get("window_name", "")
     try:
@@ -1543,6 +1640,8 @@ def _undo_restore_mode_settings(payload: dict):
 undo_mod.undo_manager.register("restore_volume", _undo_restore_volume)
 undo_mod.undo_manager.register("restore_mute_state", _undo_restore_mute_state)
 undo_mod.undo_manager.register("restore_brightness", _undo_restore_brightness)
+undo_mod.undo_manager.register("restore_radio", _undo_restore_radio)           # Tier 44
+undo_mod.undo_manager.register("restore_theme", _undo_restore_theme)           # Tier 44
 undo_mod.undo_manager.register("restore_window_position", _undo_restore_window_position)
 undo_mod.undo_manager.register("restore_window_size", _undo_restore_window_size)
 undo_mod.undo_manager.register("restore_always_on_top", _undo_restore_always_on_top)

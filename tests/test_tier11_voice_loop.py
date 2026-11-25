@@ -1080,10 +1080,11 @@ class RouterTier11Tests(unittest.TestCase):
         self.assertIsNone(self.route("quit smoking tips"))
 
     def test_hardware_verbs_beyond_turn_on_off(self):
-        self.assertEqual(self.route("disable wifi")[0], "toggle_hardware")
-        self.assertEqual(self.route("enable bluetooth")[0], "toggle_hardware")
-        self.assertEqual(self.route("wifi band karo"), ("toggle_hardware", {"instruction": "wifi band karo"}))
-        self.assertEqual(self.route("ब्लूटूथ बंद करो"), ("toggle_hardware", {"instruction": "bluetooth बंद करो"}))
+        # Tier 44: these now reach the tools that really switch the radio.
+        self.assertEqual(self.route("disable wifi")[0], "turn_wifi_off")
+        self.assertEqual(self.route("enable bluetooth")[0], "turn_bluetooth_on")
+        self.assertEqual(self.route("wifi band karo"), ("turn_wifi_off", {}))
+        self.assertEqual(self.route("ब्लूटूथ बंद करो"), ("turn_bluetooth_off", {}))
 
     def test_the_guards_still_apply(self):
         self.assertIsNone(self.route("don't open display settings"))

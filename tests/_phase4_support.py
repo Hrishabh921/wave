@@ -56,6 +56,10 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("APP_INDEX", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.APP_INDEX = False
+# Tier 44: and never switch a real radio or the real theme.
+os.environ.setdefault("SYSTEM_TOGGLES", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.SYSTEM_TOGGLES = False
 
 
 def make_tmpdir(testcase) -> str:

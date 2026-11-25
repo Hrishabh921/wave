@@ -30,8 +30,8 @@
 {"t": "mute", "i": "mute_volume", "s": "terse", "n": "Tier 14: toggle_mute retired - replaced by one-directional mute_volume/unmute_volume."}
 {"t": "unmute", "i": "unmute_volume", "s": "terse"}
 {"t": "mute the sound", "i": "mute_volume", "s": "typed"}
-{"t": "turn on wifi", "i": "toggle_hardware", "a": {"instruction": "turn on wifi"}, "s": "typed"}
-{"t": "turn off bluetooth", "i": "toggle_hardware", "a": {"instruction": "turn off bluetooth"}, "s": "typed"}
+{"t": "turn on wifi", "i": "turn_wifi_on", "a": {}, "s": "typed", "n": "Tier 44: really switched, not blind-toggled"}
+{"t": "turn off bluetooth", "i": "turn_bluetooth_off", "a": {}, "s": "typed", "n": "Tier 44: really switched, not blind-toggled"}
 {"t": "switch on the hotspot", "i": "toggle_hardware", "a": {"instruction": "switch on the hotspot"}, "s": "typed"}
 {"t": "open spotify", "i": "open_app", "a": {"app_name": "spotify"}, "s": "typed"}
 {"t": "launch notepad", "i": "open_app", "a": {"app_name": "notepad"}, "s": "typed"}
@@ -59,7 +59,7 @@
 {"t": "write buy milk today in notepad", "i": "write_notepad", "a": {"text": "buy milk today"}, "s": "typed", "n": "Tier 11: used to be handled only by the UI's removed keyword layer (and only with an LLM afterwards)"}
 {"t": "type hello world into notepad", "i": "write_notepad", "a": {"text": "hello world"}, "s": "typed"}
 {"t": "kill chrome", "i": "close_app", "a": {"app_name": "chrome"}, "s": "terse", "n": "Tier 11: close_app is T2 - still asks first"}
-{"t": "disable bluetooth", "i": "toggle_hardware", "a": {"instruction": "disable bluetooth"}, "s": "terse", "n": "Tier 11"}
+{"t": "disable bluetooth", "i": "turn_bluetooth_off", "a": {}, "s": "terse", "n": "Tier 11; Tier 44: really switched, not blind-toggled"}
 {"t": "shut down the pc", "i": "shutdown_pc", "s": "typed", "n": "Tier 14: delayed+cancellable power action"}
 {"t": "restart the pc", "i": "restart_pc", "s": "typed", "n": "Tier 14"}
 {"t": "put the pc to sleep", "i": "sleep_pc", "s": "typed", "n": "Tier 14: Wave-owned timer, no native OS delay for sleep"}
@@ -338,3 +338,8 @@
 {"t": "summarize http://example.org/page", "i": "summarize_page", "s": "typed", "a": {"url": "http://example.org/page"}}
 {"t": "set the clipboard to see you tomorrow", "i": "set_clipboard", "s": "typed", "a": {"text": "see you tomorrow"}}
 {"t": "type the quarterly report is ready", "i": "type_text", "s": "typed", "a": {"text": "the quarterly report is ready"}}
+{"t": "turn on dark mode", "i": "switch_to_dark_mode", "a": {}, "s": "typed", "n": "Tier 44"}
+{"t": "switch to light mode", "i": "switch_to_light_mode", "a": {}, "s": "typed", "n": "Tier 44"}
+{"t": "dark mode", "i": "switch_to_dark_mode", "a": {}, "s": "terse", "n": "Tier 44"}
+{"t": "enable wifi", "i": "turn_wifi_on", "a": {}, "s": "terse", "n": "Tier 44"}
+{"t": "turn on bluetooth", "i": "turn_bluetooth_on", "a": {}, "s": "typed", "n": "Tier 44"}

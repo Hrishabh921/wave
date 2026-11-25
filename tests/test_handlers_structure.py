@@ -42,6 +42,9 @@ EXPECTED_DOMAIN = {
     "undo_last_action": "automation", "list_recent_actions": "automation", "create_folder": "automation",
     "create_file": "automation", "delete_file": "automation", "search_file": "automation",
     "write_notepad": "automation", "open_system_setting": "automation", "toggle_hardware": "automation",
+    # Tier 44
+    "turn_wifi_on": "automation", "turn_wifi_off": "automation", "turn_bluetooth_on": "automation",
+    "turn_bluetooth_off": "automation", "switch_to_dark_mode": "automation", "switch_to_light_mode": "automation",
     "send_whatsapp_message": "automation", "create_workflow": "automation", "run_workflow": "automation",
     "list_workflows": "automation", "schedule_workflow": "automation", "list_workflow_schedules": "automation",
     "cancel_workflow_schedule": "automation",

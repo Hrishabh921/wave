@@ -472,6 +472,9 @@ class Config:
     # Tier 43: "open X" launches straight from Windows' own list of installed
     # apps (automation/app_index.py) instead of typing into the Start menu.
     APP_INDEX = os.getenv("APP_INDEX", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 44: Wi-Fi / Bluetooth on-off and light/dark mode really switched
+    # (Windows' radio API, the theme registry values). false = Wave can't.
+    SYSTEM_TOGGLES = os.getenv("SYSTEM_TOGGLES", "true").strip().lower() not in ("false", "0", "no")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while

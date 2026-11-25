@@ -27,7 +27,7 @@
 {"t": "mausam kaisa hai aaj jaipur mein", "i": "chat", "n": "weather has no intent_router rule regardless of language"}
 {"t": "display settings kholo", "i": "open_system_setting", "a": {"setting": "display"}, "s": "typed", "n": "Tier 11"}
 {"t": "notepad mein doodh lana likho", "i": "write_notepad", "a": {"text": "doodh lana"}, "s": "typed", "n": "Tier 11"}
-{"t": "wifi band karo", "i": "toggle_hardware", "a": {"instruction": "wifi band karo"}, "s": "terse", "n": "Tier 11: used to fall through to close_app(' band karo') and ask to close an app called 'wifi'"}
+{"t": "wifi band karo", "i": "turn_wifi_off", "a": {}, "s": "terse", "n": "Tier 11: used to fall through to close_app(' band karo') and ask to close an app called 'wifi'; Tier 44: really switched, not blind-toggled"}
 {"t": "pc shutdown karo", "i": "shutdown_pc", "s": "typed", "n": "Tier 14"}
 {"t": "pc restart karo", "i": "restart_pc", "s": "typed", "n": "Tier 14"}
 {"t": "pc ko sleep karo", "i": "sleep_pc", "s": "typed", "n": "Tier 14"}
@@ -97,3 +97,7 @@
 {"t": "roshni 15 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 15}}
 {"t": "roshni 65 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 65}}
 {"t": "roshni 95 pe karo", "i": "set_brightness", "s": "typed", "a": {"percent": 95}}
+{"t": "dark mode lagao", "i": "switch_to_dark_mode", "a": {}, "s": "typed", "n": "Tier 44"}
+{"t": "dark mode band karo", "i": "switch_to_light_mode", "a": {}, "s": "typed", "n": "Tier 44: off = light"}
+{"t": "bluetooth chalu karo", "i": "turn_bluetooth_on", "a": {}, "s": "terse", "n": "Tier 44"}
+{"t": "wifi on karo", "i": "turn_wifi_on", "a": {}, "s": "terse", "n": "Tier 44"}

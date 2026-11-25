@@ -39,6 +39,10 @@ class NotSupported(Exception):
     """This backend can't do that on this OS (yet)."""
 
 
+# Tier 44: how each radio is named to the user.
+RADIO_LABELS = {"wifi": "Wi-Fi", "bluetooth": "Bluetooth"}
+
+
 # Tier 14: the exact "a native shutdown/restart really was cancelled" sentence,
 # shared between every backend that can actually do this (Windows, Linux) and
 # AppController.cancel_shutdown()'s own success check, so combining it with
@@ -213,6 +217,22 @@ class PlatformBackend(ABC):
 
     def set_brightness(self, percent: int) -> str:
         raise self._unsupported("Setting screen brightness")
+
+    # ---- radios and the light/dark theme (Tier 44) ----
+    # `kind` is "wifi" or "bluetooth". SARA switches both radios and the
+    # theme itself; Wave only opened the matching Settings page. get_* is
+    # what AppController records so "wapas kar do" can put it back.
+    def get_radio(self, kind: str) -> bool:
+        raise self._unsupported(f"Reading the {RADIO_LABELS.get(kind, kind)} state")
+
+    def set_radio(self, kind: str, on: bool) -> str:
+        raise self._unsupported(f"Turning {RADIO_LABELS.get(kind, kind)} on or off")
+
+    def get_dark_mode(self) -> bool:
+        raise self._unsupported("Reading the light/dark theme")
+
+    def set_dark_mode(self, on: bool) -> str:
+        raise self._unsupported("Switching between light and dark mode")
 
     # ---- per-window management (Tier 8) ----
     # One SPECIFIC window, named by (a substring of) its title - a

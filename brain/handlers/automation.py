@@ -247,6 +247,41 @@ def _skill_brightness_min(brain, args: dict) -> str:
     return AppController.brightness_min()
 
 
+# Tier 44: Wi-Fi / Bluetooth / the theme, switched for real - Wave used to
+# only open the matching Settings page (SARA switches them). Turning a radio
+# OFF asks first (brain/tiers.py T2): without Wi-Fi Wave's own AI answers
+# stop, and Bluetooth off drops a Bluetooth headset - and its mic.
+@skill("turn_wifi_on", "Turns Wi-Fi on.")
+def _skill_turn_wifi_on(brain, args: dict) -> str:
+    return AppController.set_radio("wifi", True)
+
+
+@skill("turn_wifi_off", "Turns Wi-Fi off (disconnects from the internet).", confirm=True)
+def _skill_turn_wifi_off(brain, args: dict) -> str:
+    return AppController.set_radio("wifi", False)
+
+
+@skill("turn_bluetooth_on", "Turns Bluetooth on.")
+def _skill_turn_bluetooth_on(brain, args: dict) -> str:
+    return AppController.set_radio("bluetooth", True)
+
+
+@skill("turn_bluetooth_off", "Turns Bluetooth off (Bluetooth headphones, mics and mice disconnect).",
+       confirm=True)
+def _skill_turn_bluetooth_off(brain, args: dict) -> str:
+    return AppController.set_radio("bluetooth", False)
+
+
+@skill("switch_to_dark_mode", "Switches Windows (apps and taskbar) to dark mode.")
+def _skill_switch_to_dark_mode(brain, args: dict) -> str:
+    return AppController.set_dark_mode(True)
+
+
+@skill("switch_to_light_mode", "Switches Windows (apps and taskbar) to light mode.")
+def _skill_switch_to_light_mode(brain, args: dict) -> str:
+    return AppController.set_dark_mode(False)
+
+
 @skill("lock_pc", "Locks the PC/Windows session immediately.")
 def _skill_lock_pc(brain, args: dict) -> str:
     return AppController.lock_pc()
@@ -673,7 +708,8 @@ def _skill_open_airplane_mode_settings(brain, args: dict) -> str:
     return AppController.open_system_setting("airplane")
 
 
-@skill("toggle_hardware", "Turns wifi, bluetooth, or hotspot on or off.",
+@skill("toggle_hardware", "Turns the mobile hotspot on or off (for Wi-Fi or Bluetooth use turn_wifi_on / "
+       "turn_wifi_off / turn_bluetooth_on / turn_bluetooth_off).",
        {"instruction": {"type": "string", "description": "e.g. 'turn on wifi', 'turn off bluetooth'."}}, ["instruction"])
 def _skill_toggle_hardware(brain, args: dict) -> str:
     return AppController.toggle_hardware(args.get("instruction", ""))

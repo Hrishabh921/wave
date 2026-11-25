@@ -112,6 +112,9 @@ _FRIENDLY_ACTIONS = {
     "close_app": lambda a: f"close {_truncate(a.get('app_name'))}",
     "create_file": lambda a: f"create a file named '{_truncate(a.get('file_name'))}'",
     "take_photo": lambda a: "take a photo with your webcam",
+    # Tier 44
+    "turn_wifi_off": lambda a: "turn Wi-Fi off (you'll be offline, and my AI answers need the internet)",
+    "turn_bluetooth_off": lambda a: "turn Bluetooth off (Bluetooth headphones and mics will disconnect)",
 }
 
 

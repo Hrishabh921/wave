@@ -71,7 +71,8 @@ class RouteAssertionsMixin:
 # ---------------------------------------------------------------------------
 class ModeToggleVsHardwareToggleTests(RouteAssertionsMixin, unittest.TestCase):
     def test_turn_on_wifi_is_hardware_not_a_mode(self):
-        self.assertRoutes("turn on wifi", "toggle_hardware")
+        # Tier 44: the hardware tool is now the one that really switches Wi-Fi.
+        self.assertRoutes("turn on wifi", "turn_wifi_on")
 
     def test_turn_on_named_mode(self):
         self.assertRoutes("turn on study mode", "enable_mode", {"name": "study"})
@@ -385,8 +386,9 @@ class CasePreservationTests(unittest.TestCase):
 # somewhere else. 135 = 63 pre-Tier-17 rules + 72 added this tier.
 # ---------------------------------------------------------------------------
 class RuleCountRegressionTests(unittest.TestCase):
-    def test_rule_count_is_135(self):
-        self.assertEqual(len(ir._RULES), 135,
+    def test_rule_count_is_136(self):
+        # 135 + Tier 44's theme_mode (light/dark mode).
+        self.assertEqual(len(ir._RULES), 136,
                          "brain/intent_router.py's _RULES count changed - update this pin "
                          "deliberately if a later tier adds/removes rules on purpose")
 

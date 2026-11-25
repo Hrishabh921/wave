@@ -11,7 +11,7 @@ import os
 import webbrowser
 from typing import Optional
 
-from automation.backends.base import NotSupported, PlatformBackend, Shell
+from automation.backends.base import RADIO_LABELS, NotSupported, PlatformBackend, Shell
 
 logger = logging.getLogger("AppControl")
 
@@ -231,6 +231,59 @@ class MacBackend(PlatformBackend):
             raise
         except Exception as e:
             raise NotSupported(f"Setting screen brightness didn't work: {e}") from e
+
+    # ---- radios and the light/dark theme (Tier 44) ----
+    # networksetup for Wi-Fi (the Wi-Fi hardware port, usually en0),
+    # blueutil (Homebrew) for Bluetooth, System Events for the theme.
+    def _wifi_device(self) -> str:
+        rc, out = self.sh.run(["networksetup", "-listallhardwareports"])
+        lines = out.splitlines() if rc == 0 else []
+        for i, line in enumerate(lines):
+            if line.strip().lower() in ("hardware port: wi-fi", "hardware port: airport") and i + 1 < len(lines):
+                device = lines[i + 1].split(":", 1)[-1].strip()
+                if device:
+                    return device
+        return "en0"
+
+    def get_radio(self, kind: str) -> bool:
+        if kind == "wifi":
+            rc, out = self.sh.run(["networksetup", "-getairportpower", self._wifi_device()])
+            if rc != 0:
+                raise NotSupported("Couldn't read the Wi-Fi state.")
+            return out.strip().lower().endswith(": on")
+        if not self.sh.which("blueutil"):
+            raise self._unsupported("Reading the Bluetooth state (needs blueutil: brew install blueutil)")
+        rc, out = self.sh.run(["blueutil", "-p"])
+        if rc != 0:
+            raise NotSupported("Couldn't read the Bluetooth state.")
+        return out.strip() == "1"
+
+    def set_radio(self, kind: str, on: bool) -> str:
+        label = RADIO_LABELS.get(kind, kind)
+        if kind == "wifi":
+            argv = ["networksetup", "-setairportpower", self._wifi_device(), "on" if on else "off"]
+        else:
+            if not self.sh.which("blueutil"):
+                raise self._unsupported("Turning Bluetooth on or off (needs blueutil: brew install blueutil)")
+            argv = ["blueutil", "-p", "1" if on else "0"]
+        rc, _ = self.sh.run(argv)
+        if rc != 0:
+            raise NotSupported(f"Couldn't turn {label} {'on' if on else 'off'}.")
+        return f"{label} is now {'on' if on else 'off'}."
+
+    def get_dark_mode(self) -> bool:
+        rc, out = self.sh.run(["osascript", "-e",
+                               'tell application "System Events" to tell appearance preferences to get dark mode'])
+        if rc != 0:
+            raise NotSupported("Couldn't read the light/dark theme.")
+        return out.strip().lower() == "true"
+
+    def set_dark_mode(self, on: bool) -> str:
+        rc, _ = self.sh.run(["osascript", "-e", 'tell application "System Events" to tell appearance preferences '
+                             f'to set dark mode to {"true" if on else "false"}'])
+        if rc != 0:
+            raise NotSupported("Couldn't switch the theme.")
+        return f"Switched to {'dark' if on else 'light'} mode."
 
     # ---- OS services (Tier 8) ----
     # macOS doesn't have Windows/systemd's simple named-service model:

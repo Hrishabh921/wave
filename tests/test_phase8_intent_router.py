@@ -117,8 +117,11 @@ class RouteUnitTests(unittest.TestCase):
         self.assertRoutes("unmute the sound", "unmute_volume")
 
     def test_toggle_hardware_needs_both_a_device_and_a_verb(self):
-        self.assertRoutes("turn on wifi", "toggle_hardware", {"instruction": "turn on wifi"})
-        self.assertRoutes("switch off bluetooth", "toggle_hardware", {"instruction": "switch off bluetooth"})
+        # Tier 44: one radio and a clear on/off goes to the tool that really
+        # switches it; the hotspot stays toggle_hardware.
+        self.assertRoutes("turn on wifi", "turn_wifi_on", {})
+        self.assertRoutes("switch off bluetooth", "turn_bluetooth_off", {})
+        self.assertRoutes("switch on the hotspot", "toggle_hardware", {"instruction": "switch on the hotspot"})
         self.assertNoRoute("wifi is great")          # device word alone, no verb -> no toggle_hardware match
         # ("turn on the lamp" DOES still route - to open_app, via the separate
         # open_app prefix rule below it in the table. That's intentional, not

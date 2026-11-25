@@ -13,7 +13,7 @@
 {"t": "पीसी लॉक मत करो", "i": "chat", "n": "Tier 8: correctly 'chat', for two independent reasons now that lock_pc has Devanagari coverage - (1) the phrase added for lock_pc is the verb-phrase 'कंप्यूटर लॉक करो'/'पीसी लॉक करो' (ending in करो), which never appears as a contiguous substring once 'मत' is inserted before करो, so it simply doesn't match in the first place; (2) even if some future lock phrase did match as a plain substring, _has_standalone_negator() now catches standalone 'मत' as its own word regardless of position (leading or trailing) and defers to the LLM anyway. Belt and suspenders, deliberately - see that function's own docstring in brain/intent_router.py."}
 {"t": "सेटिंग्स खोलो", "i": "open_system_setting", "a": {"setting": "settings"}, "n": "Tier 11"}
 {"t": "नोटपैड में दूध लाना लिखो", "i": "write_notepad", "a": {"text": "दूध लाना"}, "n": "Tier 11"}
-{"t": "ब्लूटूथ बंद करो", "i": "toggle_hardware", "a": {"instruction": "bluetooth बंद करो"}, "n": "Tier 11"}
+{"t": "ब्लूटूथ बंद करो", "i": "turn_bluetooth_off", "a": {}, "n": "Tier 11; Tier 44: really switched, not blind-toggled"}
 {"t": "पीसी शटडाउन करो", "i": "shutdown_pc", "n": "Tier 14"}
 {"t": "पीसी रीस्टार्ट करो", "i": "restart_pc", "n": "Tier 14"}
 {"t": "पीसी को सुलाओ", "i": "sleep_pc", "n": "Tier 14"}
@@ -98,3 +98,5 @@
 {"t": "पेंट खोलो", "i": "open_app", "a": {"app_name": "पेंट"}}
 {"t": "कैलकुलेटर खोलो", "i": "open_app", "a": {"app_name": "कैलकुलेटर"}}
 {"t": "टेलीग्राम खोलो", "i": "open_app", "a": {"app_name": "टेलीग्राम"}}
+{"t": "डार्क मोड चालू करो", "i": "switch_to_dark_mode", "a": {}, "n": "Tier 44"}
+{"t": "वाईफाई चालू करो", "i": "turn_wifi_on", "a": {}, "n": "Tier 44"}

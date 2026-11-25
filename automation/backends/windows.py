@@ -43,7 +43,57 @@ try:
 except ImportError:
     HAS_PYCAW = False
 
-from automation.backends.base import NATIVE_SHUTDOWN_CANCELLED_MSG, NotSupported, PlatformBackend
+from automation.backends.base import NATIVE_SHUTDOWN_CANCELLED_MSG, RADIO_LABELS, NotSupported, PlatformBackend
+
+# Tier 44: Windows.Devices.Radios (through winsdk, as SARA does) - the same
+# switch as the Wi-Fi / Bluetooth buttons in Quick Settings, no admin rights.
+_RADIO_KINDS = {"wifi": 1, "bluetooth": 3}          # RadioKind.WI_FI / BLUETOOTH
+_PERSONALIZE_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+
+def _radio_call(kind: str, want=None) -> dict:
+    """{"found", "was_on", "now_on", "error"} for the `kind` radio, switched
+    to `want` (True/False) unless that's None. Runs the WinRT calls on a
+    thread of their own with their own event loop, 8 s at most. Never raises."""
+    result = {"found": False, "was_on": None, "now_on": None, "error": ""}
+
+    def run():
+        import asyncio  # noqa: PLC0415
+        from winsdk.windows.devices.radios import Radio, RadioAccessStatus, RadioState  # noqa: PLC0415
+
+        async def go():
+            status = await Radio.request_access_async()
+            if status != RadioAccessStatus.ALLOWED:
+                return {"found": True, "error": f"Windows didn't allow it ({status})"}
+            radios = [r for r in await Radio.get_radios_async() if int(r.kind) == _RADIO_KINDS[kind]]
+            if not radios:
+                return {"found": False, "error": f"this PC has no {RADIO_LABELS[kind]} radio"}
+            radio = radios[0]
+            was_on = radio.state == RadioState.ON
+            out = {"found": True, "was_on": was_on, "now_on": was_on, "error": ""}
+            if want is not None and bool(want) != was_on:
+                res = await radio.set_state_async(RadioState.ON if want else RadioState.OFF)
+                if res != RadioAccessStatus.ALLOWED:
+                    out["error"] = f"Windows refused ({res})"
+                else:
+                    out["now_on"] = bool(want)
+            return out
+
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(go())
+        finally:
+            loop.close()
+
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        result.update(pool.submit(run).result(timeout=8.0))
+    except Exception as e:
+        result["error"] = str(e) or type(e).__name__
+    finally:
+        pool.shutdown(wait=False)
+    return result
 from vision.screen_capture import VisionCapture
 from vision.ocr_engine import ocr
 
@@ -404,6 +454,52 @@ class WindowsBackend(PlatformBackend):
             raise
         except Exception as e:
             raise NotSupported(f"Setting screen brightness didn't work: {e}") from e
+
+    # ---- radios and the light/dark theme (Tier 44) ----
+    def get_radio(self, kind: str) -> bool:
+        state = _radio_call(kind)
+        if not state.get("found") or state.get("error") or state.get("was_on") is None:
+            raise NotSupported(f"Couldn't read the {RADIO_LABELS[kind]} state: {state.get('error') or 'unknown'}")
+        return bool(state["was_on"])
+
+    def set_radio(self, kind: str, on: bool) -> str:
+        label = RADIO_LABELS[kind]
+        state = _radio_call(kind, bool(on))
+        if not state.get("found") or state.get("error"):
+            raise NotSupported(f"Couldn't turn {label} {'on' if on else 'off'}: {state.get('error') or 'unknown'}")
+        if state.get("was_on") == bool(on):
+            return f"{label} is already {'on' if on else 'off'}."
+        return f"{label} is now {'on' if on else 'off'}."
+
+    def get_dark_mode(self) -> bool:
+        if not HAS_WINREG:
+            raise self._unsupported("Reading the light/dark theme")
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE_KEY) as key:
+                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return int(value) == 0
+        except OSError as e:
+            raise NotSupported(f"Couldn't read the light/dark theme: {e}") from e
+
+    def set_dark_mode(self, on: bool) -> str:
+        """Apps and Windows itself (taskbar, Start) together, like the
+        "Choose your mode" setting; running windows are told to repaint."""
+        if not HAS_WINREG:
+            raise self._unsupported("Switching between light and dark mode")
+        value = 0 if on else 1
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PERSONALIZE_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, "AppsUseLightTheme", 0, winreg.REG_DWORD, value)
+                winreg.SetValueEx(key, "SystemUsesLightTheme", 0, winreg.REG_DWORD, value)
+        except OSError as e:
+            raise NotSupported(f"Couldn't switch the theme: {e}") from e
+        try:
+            import ctypes  # noqa: PLC0415
+            # HWND_BROADCAST, WM_SETTINGCHANGE "ImmersiveColorSet", SMTO_ABORTIFHUNG, 2 s
+            ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "ImmersiveColorSet", 0x0002, 2000, None)
+        except Exception:
+            logger.debug("theme change broadcast failed", exc_info=True)
+        return f"Switched to {'dark' if on else 'light'} mode."
 
     def list_services(self) -> list:
         import psutil
