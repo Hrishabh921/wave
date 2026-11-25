@@ -33,6 +33,7 @@ from settings.config import config
 from database.db_manager import db
 from brain.skills_registry import skills, skill, BUILTIN_SOURCE
 from brain import tool_select
+from brain.model_router import FAST, fast_model_for, model_router
 from automation.audit import audit
 from automation import security_log
 from automation.undo import undo_manager, startup_maintenance
@@ -266,12 +267,17 @@ class WaveBrain:
         # and when local Ollama was last found not running.
         self._model_cooldown = {}
         self._ollama_down_until = 0.0
+        # Tier 34: which model tier (brain/model_router.py) the turn on this
+        # thread was routed to, and the model that last answered on it.
+        self._route_tls = threading.local()
         if self.client is None:
             logger.error(f"LLM provider '{self.provider.name}' isn't usable: {self.provider.problem}")
         else:
-            backup = self._backup_model()
+            backup, fast = self._backup_model(), self._fast_model()
             logger.info(f"LLM provider: {self.provider.name} / {self.model} @ {self.provider.host}"
-                        + (f" (backup when rate-limited: {backup})" if backup else ""))
+                        + (f" (backup when rate-limited: {backup})" if backup else "")
+                        + (f"; everyday turns: {fast} (LLM_ROUTER={model_router.mode()})"
+                           if fast and model_router.mode() != "off" else ""))
 
         # Purge expired trash + warm the audit cache without delaying startup.
         threading.Thread(target=startup_maintenance, name="WaveMaintenance", daemon=True).start()
@@ -1126,14 +1132,76 @@ class WaveBrain:
             m = "openai/gpt-oss-20b"
         return m if m and m != self.model else None
 
+    def _fast_model(self):
+        """Tier 34: the model everyday turns go to - LLM_FAST_MODEL, or on
+        Groq openai/gpt-oss-20b. None when there isn't a different one."""
+        provider = getattr(self, "provider", None)
+        return fast_model_for(getattr(provider, "name", "") if provider is not None else "", self.model)
+
+    def _turn_tier(self):
+        tls = getattr(self, "_route_tls", None)
+        return getattr(tls, "tier", None) if tls is not None else None
+
     def _models_for_request(self) -> list:
+        """The models to try, in order. Tier 34: a turn routed to the fast
+        tier starts with the fast model, then the main one; otherwise the
+        main model, then its backup (Tier 29). A model sitting out a rate
+        limit goes to the end, after the ones that are free."""
         primary, backup = self.model, self._backup_model()
-        if not backup:
-            return [primary]
+        fast = self._fast_model() if self._turn_tier() == FAST else None
+        order = []
+        for m in (fast, primary, backup):
+            if m and m not in order:
+                order.append(m)
         now = time.monotonic()
-        if self._model_cooldown.get(primary, 0) > now >= self._model_cooldown.get(backup, 0):
-            return [backup, primary]          # primary is sitting out a rate limit
-        return [primary, backup]
+        ready = [m for m in order if self._model_cooldown.get(m, 0) <= now]
+        return ready + [m for m in order if m not in ready]
+
+    def _route_turn(self, user_text: str, attachment=None) -> None:
+        """Tier 34: picks this turn's model tier (brain/model_router.py) -
+        everything the turn asks the LLM from here on uses it."""
+        tls = getattr(self, "_route_tls", None)
+        if tls is None or model_router.mode() == "off" or not self._fast_model():
+            return
+        route = model_router.choose(user_text, attachment)
+        tier = route.tier if model_router.mode() == "on" else None
+        tls.tier = tier
+        model = self._fast_model() if tier == FAST else self.model
+        logger.info(f"Model route: {route.tier} ({route.reason}; {route.bucket})"
+                    + (f" -> {model}" if tier else " - shadow mode, answering with the main model"))
+        trace.annotate(model_tier=route.tier, model_route=route.reason)
+
+    def _begin_turn_routing(self, user_text: str) -> None:
+        """Tier 34: a new user turn - forget the last turn's tier, and let
+        the router learn from what this turn says about the last answer."""
+        tls = getattr(self, "_route_tls", None)
+        if tls is not None:
+            tls.tier = None
+            tls.used_model = None
+        try:
+            model_router.observe_user_turn(user_text)
+        except Exception:
+            logger.debug("model router: observe failed", exc_info=True)
+
+    def _retry_empty_answer(self, messages: list, governor=None) -> str:
+        """Tier 34: gpt-oss models sometimes spend the whole token budget
+        reasoning and come back with no text at all (seen live: "explain in
+        detail how a refrigerator keeps food cold" -> ""). One more try, with
+        little reasoning and more room, before giving up on the turn."""
+        try:
+            timeout = max(8.0, governor.remaining_time()) if governor is not None else None
+            response = self._chat_completion(messages, tool_choice="none", max_tokens=2400,
+                                             reasoning_effort="low", timeout=timeout)
+            text = (response.choices[0].message.content or "").strip()
+            logger.info(f"The model answered with nothing - asked again: {'got an answer' if text else 'still nothing'}.")
+            return text
+        except Exception as e:
+            logger.info(f"Asking again after an empty answer failed: {type(e).__name__}: {e}")
+            return ""
+
+    def _answered_by(self) -> str:
+        tls = getattr(self, "_route_tls", None)
+        return (getattr(tls, "used_model", None) if tls is not None else None) or self.model
 
     def _llm_create(self, **kwargs):
         """client.chat.completions.create() with Tier 29's failover: a
@@ -1143,13 +1211,18 @@ class WaveBrain:
         what the last attempt raised."""
         max_wait = float(getattr(config, "LLM_RATE_LIMIT_WAIT_S", 10) or 0)
         waited = False
+        fast = self._fast_model() if self._turn_tier() == FAST else None
         while True:
             models = self._models_for_request()
             limited = None
             for i, model in enumerate(models):
                 for attempt in (1, 2):
                     try:
-                        return self.client.chat.completions.create(**dict(kwargs, model=model))
+                        response = self.client.chat.completions.create(**dict(kwargs, model=model))
+                        tls = getattr(self, "_route_tls", None)
+                        if tls is not None:
+                            tls.used_model = model
+                        return response
                     except Exception as e:
                         if _is_rate_limited(e):
                             wait = _retry_after_s(e)
@@ -1162,6 +1235,12 @@ class WaveBrain:
                             logger.info(f"{model}: transient error ({type(e).__name__}), retrying once")
                             time.sleep(0.8)
                             continue
+                        if model == fast and i + 1 < len(models) and not isinstance(e, TypeError):
+                            # Tier 34: the fast model failed outright - the
+                            # main one answers instead of the turn failing.
+                            logger.warning(f"{model} failed ({type(e).__name__}: {str(e)[:120]}) - "
+                                           f"answering with {models[i + 1]}.")
+                            break
                         raise
             # Every model is rate-limited. If one frees up within a few
             # seconds, wait for it once rather than giving up on the turn.
@@ -1604,6 +1683,7 @@ class WaveBrain:
         future caller of this non-streaming path."""
         trace.begin_turn(source="think")
         taint.clear_turn()      # Tier 1 item #4: fresh taint record for this turn
+        self._begin_turn_routing(user_text)   # Tier 34
         db.save_message("user", user_text)
 
         # Phase 7: if a sensitive tool call is awaiting a yes/no from last
@@ -1717,6 +1797,7 @@ class WaveBrain:
                     trace.end_turn(outcome="blocked" if plan_outcome.pending_confirmation else "ok")
                     return plan_outcome.final_message
 
+            self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             messages = [self.get_dynamic_system_prompt(user_text)]
             history = self._recent_history(limit=16)
             for role, msg in history:
@@ -1791,7 +1872,9 @@ class WaveBrain:
                     messages.append({"role": "tool", "tool_call_id": call.id,
                                      "content": str(result) if result else "Done."})
 
-            if final_text is not None:
+            if final_text is not None and not final_text.strip() and not all_results:
+                final_text = self._retry_empty_answer(messages, governor) or None   # Tier 34
+            if final_text is not None and final_text.strip():
                 reply = final_text
             elif all_results:
                 if governor.hit_limit:
@@ -1809,7 +1892,7 @@ class WaveBrain:
                 reply = "That's taking longer than expected - could you try again or narrow the request a bit?"
 
             db.save_message("assistant", reply)
-            trace.annotate(route="tool_loop", rounds=governor.step, model=self.model,
+            trace.annotate(route="tool_loop", rounds=governor.step, model=self._answered_by(),
                            provider=self.provider.name if self.provider else None)
             trace.end_turn(outcome="ok")
             return reply
@@ -1875,6 +1958,7 @@ class WaveBrain:
             (_think_with_image already saves it)."""
         trace.begin_turn(source="think_stream")
         taint.clear_turn()      # Tier 1 item #4: fresh taint record for this turn
+        self._begin_turn_routing(user_text)   # Tier 34
         db.save_message("user", user_text)
 
         pending_reply = self._check_pending_confirmation(user_text)
@@ -1984,6 +2068,7 @@ class WaveBrain:
                     yield plan_outcome.final_message
                     return
 
+            self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             messages = [self.get_dynamic_system_prompt(user_text)]
             history = self._recent_history(limit=16)
             for role, msg in history:
@@ -2112,7 +2197,8 @@ class WaveBrain:
                 # exactly like the all_results branch below; otherwise
                 # fall back to the same "taking longer than expected"
                 # message think() itself uses when it truly has nothing.
-                reply = (self._compose_reply_from_tools(messages, all_results) if all_results else None) or \
+                reply = (self._compose_reply_from_tools(messages, all_results) if all_results
+                         else self._retry_empty_answer(messages, governor)) or \
                     "That's taking longer than expected - could you try again or narrow the request a bit?"
                 to_yield = reply
             elif all_results:
@@ -2128,7 +2214,7 @@ class WaveBrain:
             # Saved BEFORE the last yield: a caller that stops iterating as
             # soon as it has the final text must not lose the history row.
             db.save_message("assistant", reply)
-            trace.annotate(route="tool_loop", rounds=governor.step, model=self.model,
+            trace.annotate(route="tool_loop", rounds=governor.step, model=self._answered_by(),
                            provider=self.provider.name if self.provider else None)
             trace.end_turn(outcome="ok")
             finished = True

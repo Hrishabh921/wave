@@ -85,6 +85,7 @@ from datetime import datetime, timedelta
 from automation.audit import audit
 from automation.workflow_scheduler import WorkflowScheduler
 from brain import llm_provider
+from brain.model_router import background_model
 from database.db_manager import db
 from monitoring.sys_monitor import SystemMonitor
 from reminders import context as reminder_ctx
@@ -246,7 +247,7 @@ class ProactiveEngine:
                         "don't add any new information. Reply with ONLY the reworded sentence, nothing else.")},
                     {"role": "user", "content": nudge.message},
                 ],
-                model=cfg.model,
+                model=background_model(cfg),  # Tier 34: the fast model, not the main one
                 temperature=0.6,
                 max_tokens=100,
                 # Deliberately short, same reasoning as composer.py's own

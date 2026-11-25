@@ -16,6 +16,8 @@ database/wave_memory.db
 wave_system.log*
 # what the cloned voice's own process printed (Tier 31)
 wave_voice_clone.log*
+# what the model router learned from your corrections (Tier 34)
+model_router.json
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

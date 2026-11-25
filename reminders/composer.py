@@ -37,6 +37,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from brain import llm_provider
+from brain.model_router import background_model
 from reminders import context as ctx
 from settings.config import config
 
@@ -167,7 +168,7 @@ class ReminderComposer:
         )
         response = client.chat.completions.create(
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            model=cfg.model,
+            model=background_model(cfg),  # Tier 34: the fast model, not the main one
             temperature=0.6,
             max_tokens=100,
             # Deliberately NOT cfg.timeout - that's sized for a full

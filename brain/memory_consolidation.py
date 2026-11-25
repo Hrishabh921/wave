@@ -69,6 +69,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from brain import llm_provider
+from brain.model_router import background_model
 from database.db_manager import db
 from settings.config import config
 
@@ -189,7 +190,7 @@ def _extract_facts(client, cfg, conversation_text: str, existing: List[Tuple[str
     try:
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model=cfg.model,
+            model=background_model(cfg),  # Tier 34: the fast model, not the main one
             temperature=0.2,         # extraction, not conversation - low variance is the point
             max_tokens=200,
             timeout=config.MEMORY_CONSOLIDATION_TIMEOUT_S,

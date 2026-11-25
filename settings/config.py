@@ -579,6 +579,15 @@ class Config:
     # quota, so by default the 120b model falls back to openai/gpt-oss-20b
     # (blank = that default; "off" = no fallback, just the busy message).
     LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "").strip()
+    # ── Tier 34: the right model for each request (brain/model_router.py) ─
+    # Short everyday turns go to this FAST model, and long / multi-step /
+    # code / writing / "explain in detail" ones to LLM_MODEL - on Groq each
+    # model has its own per-minute quota, so the load is spread (fewer 429s)
+    # and everyday replies come sooner. Blank = openai/gpt-oss-20b on Groq
+    # (none on other providers); "off" = every turn on LLM_MODEL.
+    LLM_FAST_MODEL = os.getenv("LLM_FAST_MODEL", "").strip()
+    # on = route each turn; shadow = decide and log, but always use LLM_MODEL; off.
+    LLM_ROUTER = _choice_env("LLM_ROUTER", "on", ("on", "shadow", "off"))
     # When every model is rate-limited but one frees up within this many
     # seconds, Wave waits once instead of saying "busy, ask again". 0 = never wait.
     LLM_RATE_LIMIT_WAIT_S = _float_env("LLM_RATE_LIMIT_WAIT_S", "10", min=0, max=60)
