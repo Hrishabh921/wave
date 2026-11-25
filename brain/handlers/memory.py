@@ -39,6 +39,8 @@ def _skill_remember_this(brain, args: dict) -> str:
        {"key": {"type": "string", "description": "The label used when it was remembered, e.g. 'name'."}}, ["key"])
 def _skill_recall_memory(brain, args: dict) -> str:
     value = db.get_memory(args.get("key", ""))
+    if value:
+        db.touch_memory([args.get("key", "")])     # Tier 46: recalled = still in use (and revived if set aside)
     return f"{args.get('key')}: {value}" if value else f"I don't have anything remembered for '{args.get('key')}'."
 
 

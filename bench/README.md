@@ -35,6 +35,22 @@ positive rate. Exit code 1 = a router threshold failed, 2 = a redteam
 threshold or the confirm-gate invariant failed, 0 = clean (or nothing to
 compare against yet).
 
+## Memory bench (Tier 46)
+
+```bash
+python -m bench.memory_bench                                  # scenarios: before Tier 46 vs now
+python -m bench.memory_bench --scenarios bench/memory/heldout.jsonl
+python -m bench.memory_bench --gate                           # exit 1 below 90% / any leak / any false memory
+```
+
+Modelled on SARA's memory bench: `bench/memory/scenarios.jsonl` (36 scenarios,
+54 questions) and `bench/memory/heldout.jsonl` (18 questions written after the
+ranking was settled) say things over weeks - facts, messages, "forget that" -
+then ask single, contradiction, history, multi-hop (people), temporal,
+forget and abstain questions, each judged on exactly the lines the model would
+be shown (`brain/memory_context.py`, `brain/episodic_recall.py`). Needs the
+sentence model (exit 4 without it). Results: `bench/results/MEMORY.md`.
+
 ## Data
 
 - `golden/intents_en.jsonl`, `intents_hi.jsonl`, `intents_hinglish.jsonl` -

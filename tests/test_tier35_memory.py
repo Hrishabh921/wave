@@ -132,7 +132,8 @@ class MultiHopTests(_DbCase):
                  "bruno_vet": "Dr Rao", "phone_brand": "Samsung", "laptop": "HP"}
         for k, v in facts.items():
             db.save_memory(k, v)
-        with mock.patch.object(db, "semantic_recall", return_value=[("sister_name", "Priya", 0.8)]):
+        # Tier 46: the ranking is db.rank_memory() (similarity + shared words) now.
+        with mock.patch.object(db, "rank_memory", return_value=[("sister_name", "Priya", 0.8, 0.0)]):
             relevant = dict(db.get_relevant_memory("meri behen ka birthday kab hai", limit=8))
         self.assertIn("sister_name", relevant)
         self.assertIn("priya_birthday", relevant)        # one hop from "Priya"

@@ -480,6 +480,15 @@ class Config:
     # know, run without a model call (brain/semantic_intents.py; needs the
     # sentence model SEMANTIC_MEMORY_ENABLED uses). false = they go to the model.
     SEMANTIC_INTENTS = os.getenv("SEMANTIC_INTENTS", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 46 (memory): who the people the user names are - "my sister's
+    # name is Priya" - followed from "my sister" to her facts
+    # (brain/people_graph.py); a question about the past ("what did I tell
+    # you last Monday?", "kal maine kya kharida tha?") answered from the
+    # user's own dated messages (brain/episodic_recall.py); and long-unused
+    # picked-up facts set aside, never deleted (MEMORY_DECAY).
+    MEMORY_PEOPLE_GRAPH = os.getenv("MEMORY_PEOPLE_GRAPH", "true").strip().lower() not in ("false", "0", "no")
+    MEMORY_EPISODIC = os.getenv("MEMORY_EPISODIC", "true").strip().lower() not in ("false", "0", "no")
+    MEMORY_DECAY = os.getenv("MEMORY_DECAY", "true").strip().lower() not in ("false", "0", "no")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while

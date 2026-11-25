@@ -37,6 +37,7 @@ from brain.model_router import FAST, fast_model_for, model_router
 from brain.rolling_summary import rolling_summary
 from brain import response_cache
 from brain import exact_answers
+from brain import memory_context, people_graph
 from brain.semantic_intents import semantic_intents
 from brain.style_profile import style_profile
 from automation.audit import audit
@@ -296,6 +297,9 @@ class WaveBrain:
         # Tier 45: the sentence model + example phrases behind "make it
         # louder"-style commands, loaded in the background.
         semantic_intents.warm_up()
+        # Tier 46: set aside long-unused picked-up facts (memory decay).
+        if getattr(config, "MEMORY_DECAY", True):
+            threading.Thread(target=db.archive_weak_memories, name="WaveMemoryDecay", daemon=True).start()
 
         # Phase 6: build/refresh the search_my_notes index in the background
         # too - first run over a notes-heavy folder can take a few seconds
@@ -337,25 +341,13 @@ class WaveBrain:
         # stops being free, and it falls back to the exact old behavior on
         # its own if semantic embeddings aren't available in this
         # environment. See database/embeddings.py and db_manager.py.
-        remembered = db.get_relevant_memory(user_text) if user_text else db.get_all_memory()
         # Tier 35 (Memory 2.0): a changed fact shows what it was before, and
         # the model is told not to make up personal details it wasn't given.
-        no_guess = (f"If {user_name} asks about something personal that isn't listed here, say you don't know "
-                    f"it yet (and offer to remember it) - never guess personal details.\n")
-        if remembered:
-            lines = []
-            for k, v in remembered:
-                line = f"- {k}: {v}"
-                history = db.get_memory_history(k, limit=2)
-                if history:
-                    when = (history[0].get("changed_at") or "")[:10]
-                    line += f" (before: {history[0]['old_value']}" + (f", changed {when})" if when else ")")
-                lines.append(line)
-            memory_block = "\n".join(lines)
-            memory_section = (f"\nTHINGS YOU'VE BEEN ASKED TO REMEMBER ABOUT {user_name.upper()}:\n{memory_block}\n"
-                              + no_guess)
-        else:
-            memory_section = "\n" + no_guess
+        # Tier 46: the people the message names come along (people graph),
+        # and a question about the past gets the user's own dated messages
+        # from then - all in brain/memory_context.py, which the memory
+        # bench reads too.
+        memory_section = memory_context.section(user_text, user_name)
 
         # Phase 6: same ambient-awareness idea as memory_section above, but
         # for today's calendar - so "what's next on my day" or "am I free
@@ -1227,6 +1219,21 @@ class WaveBrain:
         except Exception:
             logger.debug("model router / style profile: observe failed", exc_info=True)
 
+    def _learn_people(self, user_text: str) -> None:
+        """Tier 46 (brain/people_graph.py): "my sister's name is Priya and she
+        works at Infosys" is remembered as Priya's relation and workplace, as
+        a picked-up fact (forgettable; shown as picked up). Not when chats
+        aren't kept on disk - same rule as memory consolidation."""
+        if not user_text or not db.history_enabled:
+            return
+        try:
+            found = people_graph.learn(user_text, lambda k, v: db.save_memory(
+                k, v, source="auto_consolidated", turn_id=trace.current_turn_id()))
+            if found:
+                logger.info(f"People graph: remembered {len(found)} fact(s) about someone the user named.")
+        except Exception:
+            logger.debug("people graph: learning failed", exc_info=True)
+
     def _retry_empty_answer(self, messages: list, governor=None) -> str:
         """Tier 34: gpt-oss models sometimes spend the whole token budget
         reasoning and come back with no text at all (seen live: "explain in
@@ -1773,6 +1780,7 @@ class WaveBrain:
         taint.clear_turn()      # Tier 1 item #4: fresh taint record for this turn
         self._begin_turn_routing(user_text)   # Tier 34
         db.save_message("user", user_text)
+        self._learn_people(user_text)         # Tier 46
 
         # Phase 7: if a sensitive tool call is awaiting a yes/no from last
         # turn, THIS turn's job is to answer that, not to be freshly
@@ -2067,6 +2075,7 @@ class WaveBrain:
         taint.clear_turn()      # Tier 1 item #4: fresh taint record for this turn
         self._begin_turn_routing(user_text)   # Tier 34
         db.save_message("user", user_text)
+        self._learn_people(user_text)         # Tier 46
 
         pending_reply = self._check_pending_confirmation(user_text)
         if pending_reply is not None:

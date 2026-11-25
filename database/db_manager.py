@@ -1,10 +1,12 @@
 import json
+import math
 import sqlite3
 import logging
 from datetime import datetime, timedelta
 from settings.config import config
 from database import embeddings
 from brain import memory_time
+from brain import memory_rank, people_graph
 
 logger = logging.getLogger("DBManager")
 
@@ -77,10 +79,16 @@ class DatabaseManager:
                 # produced it. `updated_at` is set on every save (insert OR
                 # supersede), not just the first one - see save_memory()'s
                 # own comment on why a supersede counts as an update.
+                # Tier 46: how often and how lately a fact was actually
+                # recalled, and when a long-unused picked-up fact was set
+                # aside (archive_weak_memories()).
                 for _col, _ddl in (
                     ("source", "ALTER TABLE memory ADD COLUMN source TEXT"),
                     ("turn_id", "ALTER TABLE memory ADD COLUMN turn_id TEXT"),
                     ("updated_at", "ALTER TABLE memory ADD COLUMN updated_at TEXT"),
+                    ("use_count", "ALTER TABLE memory ADD COLUMN use_count INTEGER DEFAULT 0"),
+                    ("last_used_at", "ALTER TABLE memory ADD COLUMN last_used_at TEXT"),
+                    ("archived_at", "ALTER TABLE memory ADD COLUMN archived_at TEXT"),
                 ):
                     try:
                         cursor.execute(_ddl)
@@ -500,6 +508,54 @@ class DatabaseManager:
             logger.error(f"Failed to read chat messages: {e}")
             return []
 
+    # ---- Tier 46: what the user said on a day, or about something ----
+    # chat_history timestamps are SQLite's CURRENT_TIMESTAMP (UTC); the
+    # user's days are local ones.
+    def get_user_messages_on(self, start, end, limit: int = 12) -> list:
+        """('YYYY-MM-DD HH:MM' local, message) the user sent from local date
+        `start` to `end` inclusive, oldest first."""
+        if not self.history_enabled:
+            return []
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT strftime('%Y-%m-%d %H:%M', timestamp, 'localtime'), message FROM chat_history "
+                    "WHERE role = 'user' AND date(timestamp, 'localtime') BETWEEN ? AND ? ORDER BY id LIMIT ?",
+                    (start.isoformat(), end.isoformat(), int(limit)))
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to read messages by date: {e}")
+            return []
+
+    def search_user_messages(self, words, limit: int = 6, exclude: str = "") -> list:
+        """('YYYY-MM-DD HH:MM' local, message) the user sent that mention any
+        of `words` - those naming the most of them first, then the newest."""
+        words = [str(w).lower() for w in (words or []) if w and len(str(w)) >= 3][:6]
+        if not words or not self.history_enabled:
+            return []
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                where = " OR ".join("LOWER(message) LIKE ?" for _ in words)
+                cursor.execute(
+                    "SELECT strftime('%Y-%m-%d %H:%M', timestamp, 'localtime'), message FROM chat_history "
+                    f"WHERE role = 'user' AND ({where}) ORDER BY id DESC LIMIT 200",
+                    [f"%{w}%" for w in words])
+                rows = cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to search messages: {e}")
+            return []
+        skip = (exclude or "").strip().lower()
+        scored = []
+        for i, (when, msg) in enumerate(rows):
+            low = str(msg).lower()
+            if low.strip() == skip:
+                continue
+            scored.append((-sum(1 for w in words if w in low), i, when, msg))
+        scored.sort()
+        return [(when, msg) for _n, _i, when, msg in scored[:limit]]
+
     def get_chat_history(self, limit: int = 10) -> list:
         """Retrieves recent chat history for AI context."""
         if not self.history_enabled:
@@ -618,7 +674,8 @@ class DatabaseManager:
                     "INSERT INTO memory (key, value, embedding, source, turn_id, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value, embedding=excluded.embedding, "
-                    "source=excluded.source, turn_id=excluded.turn_id, updated_at=excluded.updated_at",
+                    "source=excluded.source, turn_id=excluded.turn_id, updated_at=excluded.updated_at, "
+                    "archived_at=NULL",
                     (target_key, value, embedding_json, source, turn_id, now_iso)
                 )
                 conn.commit()
@@ -664,14 +721,19 @@ class DatabaseManager:
             logger.error(f"Failed to get memory provenance for '{key}': {e}")
             return None
 
-    def get_all_memory(self) -> list:
+    def get_all_memory(self, include_archived: bool = True) -> list:
         """All (key, value) pairs - folded into the system prompt so the AI
         just knows these things without needing to explicitly ask for each
-        one every time."""
+        one every time. Tier 46: include_archived=False leaves out the
+        long-unused picked-up facts archive_weak_memories() set aside (the
+        prompt does; the memory screens show everything)."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT key, value FROM memory ORDER BY key")
+                if include_archived:
+                    cursor.execute("SELECT key, value FROM memory ORDER BY key")
+                else:
+                    cursor.execute("SELECT key, value FROM memory WHERE archived_at IS NULL ORDER BY key")
                 return cursor.fetchall()
         except Exception as e:
             logger.error(f"Failed to fetch memory: {e}")
@@ -719,14 +781,135 @@ class DatabaseManager:
         out). Once there's more than `limit`, switches to semantic
         recall so the prompt grows with how relevant something is, not
         just with how much the user has ever told Wave to remember."""
-        all_facts = self.get_all_memory()
+        all_facts = self.get_all_memory(include_archived=False)
         if len(all_facts) <= limit:
             return all_facts
-        hits = self.semantic_recall(query, top_k=limit)
-        if hits:
-            chosen = [(key, value) for key, value, _similarity in hits]
-            return chosen + self._one_hop(chosen, all_facts)
-        return all_facts[:limit]
+        # Tier 46: ranked by similarity AND shared words (brain/memory_rank.py)
+        # - with similarity alone, "where do I live now?" matched nothing above
+        # the 0.35 floor and the prompt got the first facts alphabetically.
+        ranked = self.rank_memory(query, limit)
+        chosen = [(key, value) for key, value, _sim, _lex in ranked] or all_facts[:limit]
+        # Tier 46: "my sister" / "Priya" brings that person's facts first
+        # (brain/people_graph.py) - "sister" isn't similar to "priya_works_at".
+        out = list(people_graph.related_facts(query, all_facts))
+        for kv in chosen + self._one_hop(chosen, all_facts):
+            if kv not in out:
+                out.append(kv)
+        self.touch_memory([key for key, _v, sim, lex in ranked if sim >= 0.35 or lex >= 0.5])
+        return out
+
+    def rank_memory(self, query: str, limit: int = 8) -> list:
+        """Tier 46: up to `limit` (key, value, similarity, word share) facts,
+        best first; [] when there's nothing to rank by (no sentence model
+        and no shared words). An archived fact takes part only when it's
+        clearly what's asked about - and recalling it revives it."""
+        query_vec = embeddings.embed(query) if query else None
+        words = memory_rank.content_words(query)
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT key, value, embedding, archived_at FROM memory")
+                rows = cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to rank memory: {e}")
+            return []
+        scored = []
+        for key, value, blob, archived_at in rows:
+            vec = embeddings.deserialize(blob) if (query_vec is not None and blob) else None
+            sim = embeddings.cosine_similarity(query_vec, vec) if vec is not None else 0.0
+            lex = memory_rank.lexical(words, key, value)
+            if archived_at and sim < self.ARCHIVED_RECALL_SIMILARITY and lex < 1.0:
+                continue
+            scored.append((sim + memory_rank.LEXICAL_WEIGHT * lex, sim, lex, key, value))
+        if query_vec is None and not any(s[2] > 0 for s in scored):
+            return []
+        scored.sort(key=lambda s: s[0], reverse=True)
+        return [(key, value, sim, lex) for _score, sim, lex, key, value in scored[:limit]]
+
+    # ---- Tier 46: decay - long-unused picked-up facts are set aside ----
+    # A fact picked up from conversation (source auto_consolidated) that is
+    # never recalled fades like SARA's Memory 2.0 strength:
+    # importance * exp(-days / (tau * (1 + 0.5 * ln(1 + uses)))). Only once
+    # there are more than MEMORY_ARCHIVE_MIN_FACTS active facts (a short list
+    # costs nothing to show whole), never a fact the user asked Wave to
+    # remember, never a fact about a person - and archived is not deleted:
+    # the memory screens still list it, a clearly matching question brings
+    # it back, saving or recalling it revives it.
+    ARCHIVED_RECALL_SIMILARITY = 0.6
+    MEMORY_DECAY_TAU_DAYS = 60.0
+    MEMORY_ARCHIVE_THRESHOLD = 0.05
+    MEMORY_ARCHIVE_MIN_FACTS = 40
+    MEMORY_IMPORTANCE = 0.5
+
+    @staticmethod
+    def memory_strength(ref: datetime, uses: int, now: datetime, tau_days: float = 60.0,
+                        importance: float = 0.5) -> float:
+        days = max(0.0, (now - ref).total_seconds() / 86400.0)
+        return importance * math.exp(-days / (tau_days * (1.0 + 0.5 * math.log1p(max(0, int(uses or 0))))))
+
+    def touch_memory(self, keys) -> None:
+        """Records that these facts were just recalled (and revives archived ones)."""
+        keys = [str(k).strip().lower() for k in (keys or []) if k]
+        if not keys:
+            return
+        try:
+            now_iso = datetime.now().isoformat()
+            with self.get_connection() as conn:
+                conn.executemany("UPDATE memory SET use_count = COALESCE(use_count, 0) + 1, last_used_at = ?, "
+                                 "archived_at = NULL WHERE key = ?", [(now_iso, k) for k in keys])
+                conn.commit()
+        except Exception as e:
+            logger.debug(f"touch_memory failed: {e}")
+
+    def _archived_keys(self) -> set:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT key FROM memory WHERE archived_at IS NOT NULL")
+                return {r[0] for r in cursor.fetchall()}
+        except Exception:
+            return set()
+
+    def archive_weak_memories(self, now: datetime = None) -> int:
+        """Sets aside the weakest long-unused picked-up facts; returns how many."""
+        now = now or datetime.now()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT key, value, source, updated_at, last_used_at, use_count FROM memory "
+                               "WHERE archived_at IS NULL")
+                rows = cursor.fetchall()
+            room = len(rows) - int(self.MEMORY_ARCHIVE_MIN_FACTS)
+            if room <= 0:
+                return 0
+            about_people = {k for p in people_graph.people([(r[0], r[1]) for r in rows]).values()
+                            for k, _ in p["facts"]}
+            weak = []
+            for key, _value, source, updated_at, last_used_at, uses in rows:
+                if source != "auto_consolidated" or key in about_people:
+                    continue
+                stamps = [s for s in (updated_at, last_used_at) if s]
+                if not stamps:
+                    continue          # age unknown (saved before Tier 20) - leave it
+                try:
+                    ref = max(datetime.fromisoformat(s) for s in stamps)
+                except ValueError:
+                    continue
+                strength = self.memory_strength(ref, uses, now, self.MEMORY_DECAY_TAU_DAYS, self.MEMORY_IMPORTANCE)
+                if strength < self.MEMORY_ARCHIVE_THRESHOLD:
+                    weak.append((strength, key))
+            weak = [key for _s, key in sorted(weak)[:room]]
+            if not weak:
+                return 0
+            stamp = now.isoformat()
+            with self.get_connection() as conn:
+                conn.executemany("UPDATE memory SET archived_at = ? WHERE key = ?", [(stamp, k) for k in weak])
+                conn.commit()
+            logger.info(f"Memory decay: set aside {len(weak)} long-unused picked-up fact(s).")
+            return len(weak)
+        except Exception as e:
+            logger.error(f"Memory decay pass failed: {e}")
+            return 0
 
     @staticmethod
     def _one_hop(chosen: list, all_facts: list, extra: int = 4) -> list:
