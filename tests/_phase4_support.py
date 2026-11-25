@@ -60,6 +60,11 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("SYSTEM_TOGGLES", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.SYSTEM_TOGGLES = False
+# Tier 45: and never load the sentence model to second-guess a scripted
+# conversation. tests/test_tier45_semantic_intents.py switches it on itself.
+os.environ.setdefault("SEMANTIC_INTENTS", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.SEMANTIC_INTENTS = False
 
 
 def make_tmpdir(testcase) -> str:

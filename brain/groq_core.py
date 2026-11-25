@@ -37,6 +37,7 @@ from brain.model_router import FAST, fast_model_for, model_router
 from brain.rolling_summary import rolling_summary
 from brain import response_cache
 from brain import exact_answers
+from brain.semantic_intents import semantic_intents
 from brain.style_profile import style_profile
 from automation.audit import audit
 from automation import security_log
@@ -292,6 +293,9 @@ class WaveBrain:
             app_index.warm_up()
         except Exception:
             logger.debug("app index warm-up failed", exc_info=True)
+        # Tier 45: the sentence model + example phrases behind "make it
+        # louder"-style commands, loaded in the background.
+        semantic_intents.warm_up()
 
         # Phase 6: build/refresh the search_my_notes index in the background
         # too - first run over a notes-heavy folder can take a few seconds
@@ -1250,6 +1254,25 @@ class WaveBrain:
             logger.info("Answered from the response cache (a stable question asked before) - no model call.")
         return answer
 
+    def _semantic_intent(self, user_text: str, attachment=None):
+        """Tier 45 (brain/semantic_intents.py): an everyday low-risk command
+        said in other words ("make it louder", "the screen is too dark") run
+        straight away, through the same _dispatch_tool() gate/audit as the
+        fast path - or None, and the model answers as before."""
+        if attachment:
+            return None
+        try:
+            hit = semantic_intents.match(user_text)
+        except Exception:
+            logger.debug("semantic intents: match failed", exc_info=True)
+            return None
+        if hit is None:
+            return None
+        intent, score = hit
+        logger.info(f"Semantic intent: {intent} (similarity {score:.2f}) - no model call.")
+        trace.annotate(skill=intent, rule=f"semantic:{score:.2f}")
+        return self._dispatch_tool(intent, {}, source="semantic_intent")
+
     def _remember_answer(self, user_text: str, reply: str) -> None:
         try:
             response_cache.put(user_text, reply, self._answered_by())
@@ -1868,6 +1891,11 @@ class WaveBrain:
                 trace.annotate(route="exact_answer")
                 trace.end_turn(outcome="ok")
                 return exact
+            semantic = self._semantic_intent(user_text, attachment)   # Tier 45
+            if semantic is not None:
+                db.save_message("assistant", semantic)
+                trace.end_turn(outcome="ok", route="semantic_intent")
+                return semantic
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             cached = self._cached_answer(user_text, attachment)   # Tier 40
             if cached:
@@ -2154,6 +2182,13 @@ class WaveBrain:
                 trace.end_turn(outcome="ok")
                 finished = True
                 yield exact
+                return
+            semantic = self._semantic_intent(user_text, attachment)   # Tier 45
+            if semantic is not None:
+                db.save_message("assistant", semantic)
+                trace.end_turn(outcome="ok", route="semantic_intent")
+                finished = True
+                yield semantic
                 return
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
             cached = self._cached_answer(user_text, attachment)   # Tier 40

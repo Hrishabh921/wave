@@ -33,6 +33,7 @@ TARGETS_MS = {"fast path": 800.0, "LLM": 2000.0}
 
 _ROUTE_PATHS = {
     "intent_router": "fast path",
+    "semantic_intent": "fast path",
     "pending_confirmation": "fast path",
     "safety_refusal": "fast path",
     "planner": "planner",

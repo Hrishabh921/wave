@@ -475,6 +475,11 @@ class Config:
     # Tier 44: Wi-Fi / Bluetooth on-off and light/dark mode really switched
     # (Windows' radio API, the theme registry values). false = Wave can't.
     SYSTEM_TOGGLES = os.getenv("SYSTEM_TOGGLES", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 45: "make it louder", "the screen is too dark", "skip to the next
+    # track" - low-risk everyday commands in words the fast path doesn't
+    # know, run without a model call (brain/semantic_intents.py; needs the
+    # sentence model SEMANTIC_MEMORY_ENABLED uses). false = they go to the model.
+    SEMANTIC_INTENTS = os.getenv("SEMANTIC_INTENTS", "true").strip().lower() not in ("false", "0", "no")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while
