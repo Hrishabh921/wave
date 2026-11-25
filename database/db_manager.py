@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from settings.config import config
 from database import embeddings
+from brain import memory_time
 
 logger = logging.getLogger("DBManager")
 
@@ -86,6 +87,28 @@ class DatabaseManager:
                     except sqlite3.OperationalError as e:
                         if 'duplicate column' not in str(e).lower():
                             logger.error(f'memory.{_col} migration failed: {e}')
+
+                # Tier 35 (Memory 2.0): what a fact used to be, and the facts
+                # the user asked Wave to forget - so a change keeps its past
+                # ("lived in Jaipur, now Delhi") and a forgotten fact isn't
+                # picked up again from old conversation.
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS memory_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        key TEXT NOT NULL,
+                        old_value TEXT NOT NULL,
+                        new_value TEXT NOT NULL,
+                        source TEXT,
+                        changed_at TEXT NOT NULL
+                    )
+                ''')
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS memory_forgotten (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        forgotten_at TEXT NOT NULL
+                    )
+                ''')
 
                 # Workflows / Automation
                 cursor.execute('''
@@ -512,6 +535,14 @@ class DatabaseManager:
         key match (the common case - saving the same key again) always
         wins over this and is never affected by it."""
         clean_key = key.strip().lower()
+        # Tier 35: "kal" / "next monday" in a fact get the date they meant
+        # today (brain/memory_time.py), so the fact stays true next week.
+        value = memory_time.annotate(value)
+        # Tier 35: a fact the user asked Wave to forget isn't learned again
+        # from old conversation; telling Wave again on purpose clears that.
+        if source == "auto_consolidated" and clean_key in self.get_forgotten_keys():
+            logger.info(f"save_memory: not re-learning '{clean_key}' - the user asked to forget it.")
+            return False
         # 🔧 Phase 3: embed "key: value" (not just the value alone) so a
         # query like "what's my favorite color" can match on the key's own
         # wording too, not only whatever value happens to be stored under it.
@@ -530,8 +561,18 @@ class DatabaseManager:
                     target_key = hits[0][0]
                     logger.info(f"save_memory: superseding existing key '{target_key}' "
                                 f"(semantically same as new key '{clean_key}', similarity {hits[0][2]:.3f})")
+            if source == "auto_consolidated" and target_key in self.get_forgotten_keys():
+                logger.info(f"save_memory: not re-learning '{target_key}' - the user asked to forget it.")
+                return False
+            previous = self.get_memory(target_key)
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                if previous is not None and previous.strip().lower() != str(value).strip().lower():
+                    cursor.execute(
+                        "INSERT INTO memory_history (key, old_value, new_value, source, changed_at) "
+                        "VALUES (?, ?, ?, ?, ?)", (target_key, previous, value, source, now_iso))
+                if source != "auto_consolidated":
+                    cursor.execute("DELETE FROM memory_forgotten WHERE key = ?", (target_key,))
                 cursor.execute(
                     "INSERT INTO memory (key, value, embedding, source, turn_id, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?) "
@@ -642,19 +683,91 @@ class DatabaseManager:
             return all_facts
         hits = self.semantic_recall(query, top_k=limit)
         if hits:
-            return [(key, value) for key, value, _similarity in hits]
+            chosen = [(key, value) for key, value, _similarity in hits]
+            return chosen + self._one_hop(chosen, all_facts)
         return all_facts[:limit]
 
+    @staticmethod
+    def _one_hop(chosen: list, all_facts: list, extra: int = 4) -> list:
+        """Tier 35: facts one step from the chosen ones - "sister_name:
+        Priya" brings "priya_birthday" along, so "meri behen ka birthday kab
+        hai" has both halves of the answer. A short value's words (a name, a
+        place) are looked for in the other facts' keys."""
+        import re as _re
+        have = {k for k, _ in chosen}
+        words = set()
+        for _k, v in chosen:
+            v = str(v or "")
+            if len(v) <= 40:
+                words.update(w for w in _re.findall(r"[a-zऀ-ॿ]{3,}", v.lower()))
+        found = []
+        for k, v in all_facts:
+            if k in have:
+                continue
+            if any(w in k for w in words):
+                found.append((k, v))
+                if len(found) >= extra:
+                    break
+        return found
+
     def delete_memory(self, key: str) -> bool:
+        """Forgets a fact - Tier 35: with its history, and remembered as
+        forgotten, so it isn't learned again from old conversation and is
+        left out of the conversation sent to the model."""
+        clean_key = key.strip().lower()
         try:
+            previous = self.get_memory(clean_key)
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM memory WHERE key = ?", (key.strip().lower(),))
+                cursor.execute("DELETE FROM memory WHERE key = ?", (clean_key,))
+                cursor.execute("DELETE FROM memory_history WHERE key = ?", (clean_key,))
+                cursor.execute(
+                    "INSERT INTO memory_forgotten (key, value, forgotten_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value, forgotten_at=excluded.forgotten_at",
+                    (clean_key, previous, datetime.now().isoformat()))
                 conn.commit()
             return True
         except Exception as e:
             logger.error(f"Failed to delete memory '{key}': {e}")
             return False
+
+    # ---- Tier 35: Memory 2.0 - history and forgetting ----
+    def get_memory_history(self, key: str, limit: int = 5) -> list:
+        """What a fact used to be, newest change first: dicts with
+        old_value, new_value, source, changed_at."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT old_value, new_value, source, changed_at FROM memory_history "
+                               "WHERE key = ? ORDER BY id DESC LIMIT ?", (key.strip().lower(), int(limit)))
+                return [{"old_value": r[0], "new_value": r[1], "source": r[2], "changed_at": r[3]}
+                        for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Failed to read the history of '{key}': {e}")
+            return []
+
+    def get_forgotten_keys(self) -> set:
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT key FROM memory_forgotten")
+                return {r[0] for r in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Failed to read forgotten facts: {e}")
+            return set()
+
+    def get_forgotten_values(self, limit: int = 50) -> list:
+        """The values of facts the user asked Wave to forget, newest first -
+        WaveBrain._recent_history() leaves messages containing them out."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM memory_forgotten WHERE value IS NOT NULL AND value != '' "
+                               "ORDER BY forgotten_at DESC LIMIT ?", (int(limit),))
+                return [r[0] for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Failed to read forgotten facts: {e}")
+            return []
 
     # ---- Workflows: named sequences of actions ----
     # 🔧 FIX: same story as memory above - the table existed, nothing used

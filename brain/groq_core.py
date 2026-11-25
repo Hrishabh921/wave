@@ -323,11 +323,24 @@ class WaveBrain:
         # its own if semantic embeddings aren't available in this
         # environment. See database/embeddings.py and db_manager.py.
         remembered = db.get_relevant_memory(user_text) if user_text else db.get_all_memory()
+        # Tier 35 (Memory 2.0): a changed fact shows what it was before, and
+        # the model is told not to make up personal details it wasn't given.
+        no_guess = (f"If {user_name} asks about something personal that isn't listed here, say you don't know "
+                    f"it yet (and offer to remember it) - never guess personal details.\n")
         if remembered:
-            memory_block = "\n".join(f"- {k}: {v}" for k, v in remembered)
-            memory_section = f"\nTHINGS YOU'VE BEEN ASKED TO REMEMBER ABOUT {user_name.upper()}:\n{memory_block}\n"
+            lines = []
+            for k, v in remembered:
+                line = f"- {k}: {v}"
+                history = db.get_memory_history(k, limit=2)
+                if history:
+                    when = (history[0].get("changed_at") or "")[:10]
+                    line += f" (before: {history[0]['old_value']}" + (f", changed {when})" if when else ")")
+                lines.append(line)
+            memory_block = "\n".join(lines)
+            memory_section = (f"\nTHINGS YOU'VE BEEN ASKED TO REMEMBER ABOUT {user_name.upper()}:\n{memory_block}\n"
+                              + no_guess)
         else:
-            memory_section = ""
+            memory_section = "\n" + no_guess
 
         # Phase 6: same ambient-awareness idea as memory_section above, but
         # for today's calendar - so "what's next on my day" or "am I free
@@ -1324,8 +1337,16 @@ class WaveBrain:
         to every request."""
         budget = int(getattr(config, "LLM_HISTORY_CHARS", 4000) or 0)
         kept, used = [], 0
+        # Tier 35: what the user asked Wave to forget stays out of the
+        # conversation the model sees too (annotated dates aside, so "doctor
+        # kal (Thu 26 Nov 2026)" still matches a message that said "doctor kal").
+        forgotten = [re.sub(r"\s*\((?:mon|tue|wed|thu|fri|sat|sun)\w* \d{1,2} \w+ \d{4}\)", "", v, flags=re.I).strip().lower()
+                     for v in db.get_forgotten_values()]
+        forgotten = [v for v in forgotten if len(v) >= 3]
         for role, msg in reversed(db.get_chat_history(limit=limit)):
             msg = msg or ""
+            if forgotten and any(v in msg.lower() for v in forgotten):
+                continue
             if len(msg) > 1200:
                 msg = msg[:1200].rstrip() + " …"
             if budget and kept and used + len(msg) > budget:
