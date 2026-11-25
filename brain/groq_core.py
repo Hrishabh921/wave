@@ -285,6 +285,13 @@ class WaveBrain:
 
         # Purge expired trash + warm the audit cache without delaying startup.
         threading.Thread(target=startup_maintenance, name="WaveMaintenance", daemon=True).start()
+        # Tier 43: the installed-apps index "open X" launches from (Windows;
+        # the saved one at once, a fresh one in the background).
+        try:
+            from automation.app_index import app_index  # noqa: PLC0415
+            app_index.warm_up()
+        except Exception:
+            logger.debug("app index warm-up failed", exc_info=True)
 
         # Phase 6: build/refresh the search_my_notes index in the background
         # too - first run over a notes-heavy folder can take a few seconds

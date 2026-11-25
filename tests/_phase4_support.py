@@ -52,6 +52,10 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("TTS_CLONE_PREWARM", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.TTS_CLONE_PREWARM = False
+# Tier 43: and never ask Windows for the real app list (or launch from it).
+os.environ.setdefault("APP_INDEX", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.APP_INDEX = False
 
 
 def make_tmpdir(testcase) -> str:

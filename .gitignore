@@ -26,6 +26,8 @@ audio_ducking.json
 style_profile.json
 # phrases rendered once in the cloned voice (Tier 42) - that voice's audio
 voice_cache/
+# the installed apps on this PC (Tier 43)
+app_index.json
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

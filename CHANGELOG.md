@@ -2,6 +2,10 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 43 — Open any installed app at once (2026-11-25)
+
+The second SARA comparison found Wave still opened any app it had no shortcut for by driving the Start menu - press Win, type the name, press Enter: over a second of fixed waits, and when the Start menu didn't take focus the name was typed into whatever window was in front. SARA keeps an index of installed apps and launches from it in milliseconds. New `automation/app_index.py` does that on Windows from Windows' own list of Start-menu apps (`Get-StartApps` - desktop programs and Store apps alike, each with its AppID), built in the background at start-up (it takes ~10 s on the owner's laptop, so the last list is kept in `<DATA_DIR>/app_index.json`, git-ignored, and used at once) and refreshed every 30 minutes. A name resolves to an app by exact name, then a nickname ("vs code", "calc", "cmd"), then all its words among the app name's words, then a close spelling ("notepd" -> Notepad); anything vaguer, or an app that isn't installed, goes the old Start-menu way as before. Launching is `explorer.exe shell:AppsFolder\<AppID>` with an AppID from Windows' list only - the user's words never become a path or a command - and uninstallers never enter the index. On the owner's laptop: 106 apps; "chrome", "calc", "vs code", "whatsapp", "word", "cmd", "task manager" all resolve in under 4 ms. `APP_INDEX=false` turns it off, as `tests/_phase4_support.py` does for the test suite. 8 new tests in `tests/test_tier43_app_index.py`.
+
 ## Tier 42 — The smaller gaps: exact answers, looking things up, instant announcements (2026-11-25)
 
 The last of the gaps to SARA's 12 Nov code, in one tier:

@@ -125,6 +125,17 @@ class WindowsBackend(PlatformBackend):
 
     # ---- apps & browsers ----
     def launch_app(self, app_name: str) -> str:
+        # Tier 43: straight from Windows' list of installed apps when the
+        # name clearly means one (automation/app_index.py) - no typing into
+        # the Start menu, no chance of typing into the wrong window.
+        from automation.app_index import app_index  # noqa: PLC0415
+        entry = app_index.resolve(app_name)
+        if entry is not None:
+            try:
+                app_index.launch(entry)
+                return f"Successfully opened {entry['name']}."
+            except Exception as e:
+                logger.warning(f"Opening {entry['name']} from the app index failed ({e}) - using the Start menu")
         try:
             pyautogui.press('win')
             time.sleep(0.5)

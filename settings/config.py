@@ -469,6 +469,9 @@ class Config:
     # Tier 42: render "Systems active." / "Standing by." in the cloned voice
     # once and keep them on disk (voice_cache/), so they play at once.
     TTS_CLONE_PREWARM = os.getenv("TTS_CLONE_PREWARM", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 43: "open X" launches straight from Windows' own list of installed
+    # apps (automation/app_index.py) instead of typing into the Start menu.
+    APP_INDEX = os.getenv("APP_INDEX", "true").strip().lower() not in ("false", "0", "no")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while
