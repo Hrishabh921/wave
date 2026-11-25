@@ -571,17 +571,50 @@ class WebManager:
             return ""
         return raw if raw.startswith("http") else f"https://www.youtube.com/watch?v={raw}"
 
+    # Tier 47: the search behind get_live_information and grounding. The
+    # duckduckgo_search package (since renamed `ddgs`) returned unrelated
+    # text on the owner's PC - "petrol price in Delhi today" came back as a
+    # Chinese page about Netflix, "who is the current RBI governor?" as
+    # "electric current is expressed in amperes" - so `ddgs` is used when
+    # it's installed, and a result that doesn't name at least half of the
+    # question's own words is dropped: no answer beats a wrong one handed
+    # to the model as fresh.
+    _SEARCH_STOP = frozenset(
+        "the a an and or of to in at on for with from by is are was were be am do does did what which where when "
+        "who whom whose why how my me i you your it its this that these those now today tell please about any "
+        "kya hai hain ka ki ke ko se mein me ne aaj abhi kitna kitne kitni kaun kab kahan batao bata".split())
+
+    @classmethod
+    def relevant_results(cls, query: str, results) -> list:
+        """'title: body' of the results naming at least half of the query's words."""
+        words = [w for w in re.findall(r"[a-z0-9]+", (query or "").lower())
+                 if len(w) >= 3 and w not in cls._SEARCH_STOP]
+        kept = []
+        for r in results or []:
+            text = " ".join(f"{r.get('title', '')}: {r.get('body', '')}".split()).strip(": ")
+            low = text.lower()
+            if text and (not words or 2 * sum(1 for w in words if w in low) >= len(words)):
+                kept.append(text)
+        return kept
+
     @classmethod
     def ask_internet(cls, query: str) -> str:
-        try:
-            from duckduckgo_search import DDGS
-            results = DDGS().text(query, max_results=2)
-            if results:
-                return " ".join([res.get("body", "") for res in results])
+        if not (query or "").strip():
             return ""
+        try:
+            try:
+                from ddgs import DDGS
+                results = DDGS().text(query, max_results=4, region="us-en")
+            except ImportError:
+                from duckduckgo_search import DDGS
+                results = DDGS().text(query, max_results=4)
         except Exception as e:
             logger.error(f"Internet search failed: {e}")
             return ""
+        kept = cls.relevant_results(query, results)[:3]
+        if results and not kept:
+            logger.info("Internet search: the results didn't mention the question's words - none used.")
+        return "\n".join(f"- {t}" for t in kept)
 
     # ------------------------------------------------------------------
     # Tier 3 / item 7: weather

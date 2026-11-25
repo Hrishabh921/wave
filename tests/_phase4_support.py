@@ -68,7 +68,8 @@ if "settings.config" in sys.modules:
 # Tier 46: and never learn people from a scripted conversation, add the
 # chat history to a test's prompt, or set aside a database's facts.
 # tests/test_tier46_memory.py switches them on itself.
-for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY"):
+# Tier 47: and never search the real web or read the real foreground window.
+for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)

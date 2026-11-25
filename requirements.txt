@@ -33,6 +33,7 @@ qtawesome==1.4.2               # icon set used across the UI
 Pygments==2.21.0               # code syntax highlighting in chat bubbles
 screen-brightness-control==0.27.2   # brightness slider
 duckduckgo-search==8.1.1       # get_live_information/ask_internet, and get_news (Tier 3 / item 7)
+ddgs==9.16.0                   # Tier 47: ask_internet's search (duckduckgo-search's successor - the old one returned unrelated pages)
 ollama==0.6.3                   # local-LLM fallback when Groq is down (Phase 2)
 dateparser==1.4.3               # natural-language time parsing for reminders/alarms (Phase 2)
 faster-whisper==1.2.1           # local/offline speech recognition (else falls back to Google, Phase 3)

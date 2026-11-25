@@ -489,6 +489,15 @@ class Config:
     MEMORY_PEOPLE_GRAPH = os.getenv("MEMORY_PEOPLE_GRAPH", "true").strip().lower() not in ("false", "0", "no")
     MEMORY_EPISODIC = os.getenv("MEMORY_EPISODIC", "true").strip().lower() not in ("false", "0", "no")
     MEMORY_DECAY = os.getenv("MEMORY_DECAY", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 47: a time-sensitive question ("petrol ka rate aaj?", "who is the
+    # current RBI governor?") gets one web search before the model answers
+    # (brain/grounding.py) - the model's training is months old.
+    WEB_GROUNDING = os.getenv("WEB_GROUNDING", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 47: one line per turn about the PC - the app in front and the
+    # battery (brain/context_line.py). Window TITLES (a document, a chat, an
+    # email subject) go to the cloud model only with CONTEXT_WINDOW_TITLES=true.
+    CONTEXT_LINE = os.getenv("CONTEXT_LINE", "true").strip().lower() not in ("false", "0", "no")
+    CONTEXT_WINDOW_TITLES = os.getenv("CONTEXT_WINDOW_TITLES", "false").strip().lower() in ("true", "1", "yes")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while

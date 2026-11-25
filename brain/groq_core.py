@@ -38,6 +38,7 @@ from brain.rolling_summary import rolling_summary
 from brain import response_cache
 from brain import exact_answers
 from brain import memory_context, people_graph
+from brain import context_line, grounding
 from brain.semantic_intents import semantic_intents
 from brain.style_profile import style_profile
 from automation.audit import audit
@@ -366,12 +367,16 @@ class WaveBrain:
         # this user prefers (brain/style_profile.py).
         style = style_profile.style_lines(user_text)
         style_section = f"\nSTYLE:\n{style}\n" if style else ""
+        # Tier 47: the app in front and the battery (brain/context_line.py).
+        pc_line = context_line.build()
+        pc_line = f"{pc_line}\n" if pc_line else ""
 
         return {
             "role": "system",
             "content": (
                 f"You are Wave, an elite AI Desktop Assistant for {user_name}.\n"
                 f"System: {os_name} | Date: {current_date} | Time: {current_time}.\n"
+                f"{pc_line}"
                 f"{memory_section}"
                 f"{calendar_section}"
                 f"{style_section}"
@@ -1219,6 +1224,28 @@ class WaveBrain:
         except Exception:
             logger.debug("model router / style profile: observe failed", exc_info=True)
 
+    def _ground(self, messages: list, user_text: str, attachment=None) -> None:
+        """Tier 47 (brain/grounding.py): a time-sensitive question ("petrol ka
+        rate aaj?", "who is the current RBI governor?") gets one web search
+        before the model is asked, and the model answers from it. The result
+        is someone else's web content: wrapped like get_live_information's
+        (so the turn counts as having read the web) and given as a system
+        message of its own - never mixed into the user's words. (Like that
+        tool's own look-ups, a search isn't an action for the audit log.)"""
+        if attachment or not grounding.needs_grounding(user_text):
+            return
+        found = grounding.fetch(grounding.search_query(user_text), WebManager.ask_internet)
+        if not found:
+            logger.info("Grounding: the web search found nothing in time - the model answers on its own.")
+            return
+        wrapped = content_trust.wrap_untrusted(found, source="a web search")
+        messages.append({"role": "system", "content": (
+            "Fresh web search results for the user's question (newer than what you learned in training): "
+            "answer from them, say briefly where the answer comes from, and say so if they don't contain it.\n"
+            + wrapped)})
+        trace.annotate(grounded=True)
+        logger.info("Grounding: searched the web first for a time-sensitive question.")
+
     def _learn_people(self, user_text: str) -> None:
         """Tier 46 (brain/people_graph.py): "my sister's name is Priya and she
         works at Infosys" is remembered as Priya's relation and workplace, as
@@ -1934,6 +1961,7 @@ class WaveBrain:
             else:
                 user_content = user_text
             messages.append({"role": "user", "content": user_content})
+            self._ground(messages, user_text, attachment)   # Tier 47: time-sensitive -> search first
 
             # 🔧 Phase 6: this used to be exactly one round of tool calls,
             # forced closed by the old follow-up pass always using
@@ -2227,6 +2255,7 @@ class WaveBrain:
             else:
                 user_content = user_text
             messages.append({"role": "user", "content": user_content})
+            self._ground(messages, user_text, attachment)   # Tier 47: time-sensitive -> search first
 
             governor = _ToolLoopGovernor()
             all_results = []
