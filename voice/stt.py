@@ -10,6 +10,7 @@ from voice.aec import aec_processor
 from voice.buffers import get_vad
 from voice import transcript_filter
 from voice import endpoint_cues
+from voice import vocabulary
 # Tier 13: `import voice.language as language`, not `from voice import
 # language` - the latter resolves via hasattr() on the already-cached
 # `voice` package object, which skips re-importing the submodule even
@@ -351,6 +352,11 @@ class SpeechReceiver:
             hint = getattr(self, "wake_hint", None)
             if hint:
                 prompt = f"{hint} {prompt}".strip() if prompt else hint
+            # Tier 37: the names Wave knows (memory, STT_EXTRA_VOCABULARY), so
+            # Whisper spells them right instead of guessing.
+            names = vocabulary.vocabulary_hint()
+            if names:
+                prompt = f"{prompt} {names}".strip() if prompt else names
             with self._whisper_lock:
                 segments, _info = model.transcribe(
                     audio_np,

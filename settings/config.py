@@ -238,6 +238,11 @@ class Config:
     # and the two are joined (voice/endpoint_cues.py). false = off.
     STT_CONTINUATION = os.getenv("STT_CONTINUATION", "true").strip().lower() not in ("false", "0", "no")
     STT_CONTINUATION_WAIT_S = _float_env("STT_CONTINUATION_WAIT_S", "1.6", min=0.3, max=5)
+    # Tier 37: names put in Whisper's prompt so it spells them right
+    # (voice/vocabulary.py) - from Wave's memory and this list (comma-
+    # separated: "Priya, Jaipur, Arijit Singh"). STT_VOCABULARY=off: neither.
+    STT_VOCABULARY = _choice_env("STT_VOCABULARY", "auto", ("auto", "off"))
+    STT_EXTRA_VOCABULARY = os.getenv("STT_EXTRA_VOCABULARY", "").strip()
     # Audio kept from just before speech was detected (no clipped first syllable).
     STT_PREROLL_MS = _int_env("STT_PREROLL_MS", "300", min=0, max=1000)
     # A safety net only - there is no fixed phrase cap any more.

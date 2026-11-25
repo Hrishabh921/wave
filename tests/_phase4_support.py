@@ -24,6 +24,11 @@ atexit.register(shutil.rmtree, _TEST_DATA, ignore_errors=True)
 os.environ.setdefault("SPEAKER_VERIFY", "off")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.SPEAKER_VERIFY = "off"
+# Tier 37: nor read the developer's remembered names into Whisper's prompt.
+# tests/test_tier37_vocabulary.py turns it back on with its own facts.
+os.environ.setdefault("STT_VOCABULARY", "off")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.STT_VOCABULARY = "off"
 
 
 def make_tmpdir(testcase) -> str:
