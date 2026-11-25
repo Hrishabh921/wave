@@ -621,6 +621,10 @@ class Config:
     # (brain/response_cache.py - conservative by design). Days an answer is kept.
     LLM_RESPONSE_CACHE = os.getenv("LLM_RESPONSE_CACHE", "true").strip().lower() not in ("false", "0", "no")
     LLM_CACHE_TTL_DAYS = _float_env("LLM_CACHE_TTL_DAYS", "14", min=0.1, max=365)
+    # Tier 41: learn whether you like short or detailed answers (from "detail
+    # mein samjhao" / "chhota batao" / interrupting) - brain/style_profile.py.
+    # The reply's language always follows your message's script either way.
+    LLM_STYLE_PROFILE = os.getenv("LLM_STYLE_PROFILE", "true").strip().lower() not in ("false", "0", "no")
 
     # ── Phase 6: governed tool-calling loop ─────────────────────────────
     # Before this, think() made exactly one round of tool calls no matter

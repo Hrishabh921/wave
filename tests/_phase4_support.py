@@ -44,6 +44,10 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("LLM_RESPONSE_CACHE", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.LLM_RESPONSE_CACHE = False
+# Tier 41: and never teach a developer's style profile from test messages.
+os.environ.setdefault("LLM_STYLE_PROFILE", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.LLM_STYLE_PROFILE = False
 
 
 def make_tmpdir(testcase) -> str:

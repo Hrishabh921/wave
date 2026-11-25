@@ -22,6 +22,8 @@ model_router.json
 conversation_summary.json
 # other apps' volumes while Wave has them turned down (Tier 39)
 audio_ducking.json
+# whether you like short or detailed answers, and your usual script (Tier 41)
+style_profile.json
 wave_settings.json
 database/trash/
 database/ttfa.jsonl*

@@ -36,6 +36,7 @@ from brain import tool_select
 from brain.model_router import FAST, fast_model_for, model_router
 from brain.rolling_summary import rolling_summary
 from brain import response_cache
+from brain.style_profile import style_profile
 from automation.audit import audit
 from automation import security_log
 from automation.undo import undo_manager, startup_maintenance
@@ -357,6 +358,10 @@ class WaveBrain:
         if summary:
             calendar_section += f"\nEARLIER IN THIS CONVERSATION (older messages, summarised):\n{summary}\n"
         rolling_summary.schedule_update()
+        # Tier 41: the reply's language (this message's script) and the length
+        # this user prefers (brain/style_profile.py).
+        style = style_profile.style_lines(user_text)
+        style_section = f"\nSTYLE:\n{style}\n" if style else ""
 
         return {
             "role": "system",
@@ -365,6 +370,7 @@ class WaveBrain:
                 f"System: {os_name} | Date: {current_date} | Time: {current_time}.\n"
                 f"{memory_section}"
                 f"{calendar_section}"
+                f"{style_section}"
                 f"RULES:\n"
                 f"1. Never hallucinate sending messages or taking actions unless explicitly shown in chat history.\n"
                 f"2. NEVER invent or fake system information. If you don't have the data, say you don't know.\n"
@@ -1202,8 +1208,9 @@ class WaveBrain:
             tls.used_model = None
         try:
             model_router.observe_user_turn(user_text)
+            style_profile.observe_user_turn(user_text)    # Tier 41
         except Exception:
-            logger.debug("model router: observe failed", exc_info=True)
+            logger.debug("model router / style profile: observe failed", exc_info=True)
 
     def _retry_empty_answer(self, messages: list, governor=None) -> str:
         """Tier 34: gpt-oss models sometimes spend the whole token budget

@@ -18,6 +18,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from voice.tts import tts_engine
 from voice.ducking import ducker
+from brain.style_profile import style_profile
 from voice.stt import stt_engine
 from voice import commands as voice_commands
 from voice import speech_filter
@@ -206,6 +207,7 @@ class ContinuousMicWorker(QThread):
         with trace.correlate(turn_id):
             if decision.interrupt:
                 self.interruption_signal.emit()
+                style_profile.note_interrupt()   # Tier 41: a vote for shorter replies
 
             action = decision.action
             if action == voice_commands.WAKE:
