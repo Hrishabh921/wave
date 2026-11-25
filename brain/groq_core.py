@@ -35,6 +35,7 @@ from brain.skills_registry import skills, skill, BUILTIN_SOURCE
 from brain import tool_select
 from brain.model_router import FAST, fast_model_for, model_router
 from brain.rolling_summary import rolling_summary
+from brain import response_cache
 from automation.audit import audit
 from automation import security_log
 from automation.undo import undo_manager, startup_maintenance
@@ -1220,6 +1221,23 @@ class WaveBrain:
             logger.info(f"Asking again after an empty answer failed: {type(e).__name__}: {e}")
             return ""
 
+    def _cached_answer(self, user_text: str, attachment=None):
+        """Tier 40 (brain/response_cache.py): the stored answer to a stable,
+        non-personal question this model already answered - or None."""
+        if attachment:
+            return None
+        model = self._fast_model() if self._turn_tier() == FAST else self.model
+        answer = response_cache.get(user_text, model)
+        if answer:
+            logger.info("Answered from the response cache (a stable question asked before) - no model call.")
+        return answer
+
+    def _remember_answer(self, user_text: str, reply: str) -> None:
+        try:
+            response_cache.put(user_text, reply, self._answered_by())
+        except Exception:
+            logger.debug("response cache: put failed", exc_info=True)
+
     def _answered_by(self) -> str:
         tls = getattr(self, "_route_tls", None)
         return (getattr(tls, "used_model", None) if tls is not None else None) or self.model
@@ -1827,6 +1845,12 @@ class WaveBrain:
                     return plan_outcome.final_message
 
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
+            cached = self._cached_answer(user_text, attachment)   # Tier 40
+            if cached:
+                db.save_message("assistant", cached)
+                trace.annotate(route="response_cache")
+                trace.end_turn(outcome="ok")
+                return cached
             messages = [self.get_dynamic_system_prompt(user_text)]
             history = self._recent_history(limit=16)
             for role, msg in history:
@@ -1905,6 +1929,8 @@ class WaveBrain:
                 final_text = self._retry_empty_answer(messages, governor) or None   # Tier 34
             if final_text is not None and final_text.strip():
                 reply = final_text
+                if not all_results:
+                    self._remember_answer(user_text, reply)   # Tier 40
             elif all_results:
                 if governor.hit_limit:
                     logger.warning(f"Tool loop stopped early ({governor.hit_limit} limit) after "
@@ -2098,6 +2124,14 @@ class WaveBrain:
                     return
 
             self._route_turn(user_text, attachment)   # Tier 34: fast or main model
+            cached = self._cached_answer(user_text, attachment)   # Tier 40
+            if cached:
+                db.save_message("assistant", cached)
+                trace.annotate(route="response_cache")
+                trace.end_turn(outcome="ok")
+                finished = True
+                yield cached
+                return
             messages = [self.get_dynamic_system_prompt(user_text)]
             history = self._recent_history(limit=16)
             for role, msg in history:
@@ -2218,6 +2252,8 @@ class WaveBrain:
             to_yield = None
             if final_text:
                 reply = final_text
+                if not all_results:
+                    self._remember_answer(user_text, reply)   # Tier 40
             elif final_text is not None and not streamed_anything:
                 # The round ended with no more tool calls AND no text ever
                 # arrived (final_text == "") - nothing was yielded above,

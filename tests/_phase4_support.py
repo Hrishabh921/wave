@@ -39,6 +39,11 @@ if "settings.config" in sys.modules:
 os.environ.setdefault("AUDIO_DUCKING", "false")
 if "settings.config" in sys.modules:
     sys.modules["settings.config"].config.AUDIO_DUCKING = False
+# Tier 40: and never store a fake model's answer in a real database's
+# response cache (or serve one). tests/test_tier40_response_cache.py uses its own.
+os.environ.setdefault("LLM_RESPONSE_CACHE", "false")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.LLM_RESPONSE_CACHE = False
 
 
 def make_tmpdir(testcase) -> str:

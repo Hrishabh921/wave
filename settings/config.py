@@ -616,6 +616,11 @@ class Config:
     # system prompt. false = older messages just drop out, as before.
     LLM_ROLLING_SUMMARY = os.getenv("LLM_ROLLING_SUMMARY", "true").strip().lower() not in ("false", "0", "no")
     LLM_SUMMARY_MAX_CHARS = _int_env("LLM_SUMMARY_MAX_CHARS", "600", min=100, max=4000)
+    # Tier 40: a stable, non-personal question answered before ("what is
+    # photosynthesis?") is answered again from a cache, with no model call
+    # (brain/response_cache.py - conservative by design). Days an answer is kept.
+    LLM_RESPONSE_CACHE = os.getenv("LLM_RESPONSE_CACHE", "true").strip().lower() not in ("false", "0", "no")
+    LLM_CACHE_TTL_DAYS = _float_env("LLM_CACHE_TTL_DAYS", "14", min=0.1, max=365)
 
     # ── Phase 6: governed tool-calling loop ─────────────────────────────
     # Before this, think() made exactly one round of tool calls no matter
