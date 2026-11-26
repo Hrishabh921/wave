@@ -157,25 +157,71 @@ except BaseException:      # not installed / no display: the tests' own fakes st
     pass
 
 
-# No test reaches a real LLM provider either. settings/config.py's
-# load_dotenv() puts the developer's GROQ_API_KEY into every run, and the
-# helpers that build their own client from it (the proactive nudge reword,
-# the reminder composer, the health check) spent the owner's free-tier
-# quota: 22 requests to api.groq.com per full run. Every HTTP client looks
-# a host up with socket.getaddrinfo first, so looking up a provider's host
-# now fails at once - nothing leaves the machine - and the test that tried
-# fails, naming the host and the Wave code that called it. Point such a
-# test at tests/_fake_openai.py (BrainBase in test_phase4_brain.py) or mock
-# the provider.
-_REAL_LLM_HOSTS = ("groq.com", "openai.com", "openrouter.ai")
-REAL_LLM_REQUESTS = []          # (host, thread name, Wave's part of the stack) per blocked lookup
+# Nor does a test run make the other real requests it used to (found by
+# tracing every DNS lookup a full run made, and the test making it):
+# - importing pywhatkit (installed on the owner's PC) fetched google.com:
+#   its whats.py checks the connection at import time. It is imported here
+#   once with that check answered locally, so install_fake_module() and
+#   web/web_ops.py get the real module without the request;
+# - a prefetch a test started could still be synthesizing after the test
+#   put its fake edge_tts.Communicate back, and then reached Microsoft's
+#   edge-tts service. Outside a test's own fake, Communicate now fails the
+#   way it does on an offline PC, which every caller already falls back from;
+# - database/embeddings.py's sentence model asked huggingface.co for a newer
+#   copy on every load (22 requests). Offline it loads from the local cache;
+#   the tests that need the real model skip when it isn't downloaded.
+try:
+    import requests as _requests
+    _requests_get, _requests.get = _requests.get, (lambda *a, **k: None)
+    try:
+        import pywhatkit  # noqa: F401
+    finally:
+        _requests.get = _requests_get
+except BaseException:      # not installed / no display: install_fake_module() stands in
+    pass
+
+
+class _OfflineCommunicate:
+    def __init__(self, *args, **kwargs):
+        raise ConnectionError("tests have no edge-tts service")
+
+
+try:
+    import edge_tts as _edge_tts
+    _edge_tts.Communicate = _OfflineCommunicate
+except Exception:
+    pass
+os.environ["HF_HUB_OFFLINE"] = "1"
+if "huggingface_hub.constants" in sys.modules:
+    sys.modules["huggingface_hub.constants"].HF_HUB_OFFLINE = True
+
+
+# And nothing else can reach the network: every client looks a host up
+# with socket.getaddrinfo first, so looking up anything but this machine
+# now fails at once - nothing leaves it - and the test that tried fails,
+# naming the host and the Wave code that called it. It began with the LLM:
+# settings/config.py's load_dotenv() puts the developer's GROQ_API_KEY into
+# every run, and the helpers that build their own client from it (the
+# proactive nudge reword, the reminder composer, the health check) spent
+# the owner's free-tier quota - 22 requests to api.groq.com per full run.
+# Point an LLM test at tests/_fake_openai.py (BrainBase in
+# test_phase4_brain.py); fake or mock anything else.
+REAL_NETWORK_REQUESTS = []      # (host, thread name, Wave's part of the stack) per blocked lookup
 _running_test = None
+try:
+    _OWN_HOST = socket.gethostname().lower()
+except OSError:
+    _OWN_HOST = "localhost"
 
 
-def _real_llm_host(host):
+def _network_host(host):
+    """`host`, normalized, when looking it up would leave this machine; else None."""
     name = host.decode("ascii", "replace") if isinstance(host, (bytes, bytearray)) else str(host or "")
-    name = name.strip().rstrip(".").lower()
-    return name if any(name == h or name.endswith("." + h) for h in _REAL_LLM_HOSTS) else None
+    name = name.strip().strip("[]").rstrip(".").lower()
+    if name in ("", "localhost", "0.0.0.0", "::", "::1", _OWN_HOST) or name.startswith("127.") \
+            or name.endswith(".localhost"):
+        return None
+    return name
 
 
 def _caller_stack() -> str:
@@ -189,31 +235,31 @@ def _caller_stack() -> str:
     return "".join(traceback.format_list(own or frames))
 
 
-def _no_real_llm_getaddrinfo(host, *args, **kwargs):
-    name = _real_llm_host(host)
+def _offline_getaddrinfo(host, *args, **kwargs):
+    name = _network_host(host)
     if name is None:
         return _real_getaddrinfo(host, *args, **kwargs)
     thread, stack = threading.current_thread().name, _caller_stack()
-    REAL_LLM_REQUESTS.append((name, thread, stack))
-    sys.stderr.write(f"\n*** BLOCKED a real request to {name} ({_running_test or 'outside any test'}, thread "
-                     f"{thread}) - tests use tests/_fake_openai.py or a mocked provider.\n")
+    REAL_NETWORK_REQUESTS.append((name, thread, stack))
+    sys.stderr.write(f"\n*** BLOCKED a real network request to {name} ({_running_test or 'outside any test'}, "
+                     f"thread {thread}) - tests use local fakes (tests/_fake_openai.py for an LLM).\n")
     if _running_test is None:      # no test to fail, so the stack goes to the log
         sys.stderr.write(stack)
-    raise socket.gaierror(socket.EAI_NONAME, f"tests may not reach the real LLM provider {name}")
+    raise socket.gaierror(socket.EAI_NONAME, f"tests may not reach the network ({name})")
 
 
-def _run_without_real_llm(self, result=None):
+def _run_offline(self, result=None):
     global _running_test
-    first = len(REAL_LLM_REQUESTS)
+    first = len(REAL_NETWORK_REQUESTS)
 
-    def no_real_llm_requests():
-        made = REAL_LLM_REQUESTS[first:]
+    def no_network_requests():
+        made = REAL_NETWORK_REQUESTS[first:]
         if made:
             name, thread, stack = made[0]
-            raise AssertionError(f"{len(made)} real LLM request(s) blocked during this test, the first to "
-                                 f"{name} on thread {thread}:\n{stack}")
+            raise AssertionError(f"{len(made)} real network request(s) blocked during this test, the first "
+                                 f"to {name} on thread {thread}:\n{stack}")
 
-    self.addCleanup(no_real_llm_requests)   # added first, so it runs last: after the test's own cleanups
+    self.addCleanup(no_network_requests)   # added first, so it runs last: after the test's own cleanups
     outer, _running_test = _running_test, self.id()
     try:
         return _real_testcase_run(self, result)
@@ -221,11 +267,11 @@ def _run_without_real_llm(self, result=None):
         _running_test = outer
 
 
-if not getattr(socket.getaddrinfo, "_no_real_llm", False):   # once per process, even if re-imported
+if not getattr(socket.getaddrinfo, "_offline", False):   # once per process, even if re-imported
     _real_getaddrinfo, _real_testcase_run = socket.getaddrinfo, unittest.TestCase.run
-    _no_real_llm_getaddrinfo._no_real_llm = True
-    socket.getaddrinfo = _no_real_llm_getaddrinfo
-    unittest.TestCase.run = _run_without_real_llm
+    _offline_getaddrinfo._offline = True
+    socket.getaddrinfo = _offline_getaddrinfo
+    unittest.TestCase.run = _run_offline
 
 
 def silence_tts(testcase) -> None:

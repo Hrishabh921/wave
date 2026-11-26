@@ -241,9 +241,12 @@ class RestartSurvivalTests(WorkflowScheduleTestBase):
         runner_calls = []
         fresh_engine.set_workflow_runner(lambda name: runner_calls.append(name))
 
+        # A fresh engine's morning briefing fires on any run after 08:00 and
+        # fetches the real weather (wttr.in) - not what this test is about.
         with mock.patch.object(app_control_mod.AppController, "is_dnd_or_focus_active", return_value=False), \
              mock.patch.object(proactive_mod.SystemMonitor, "get_stats",
-                               return_value={"battery_percent": "N/A", "is_plugged": False}):
+                               return_value={"battery_percent": "N/A", "is_plugged": False}), \
+             mock.patch.object(config, "PROACTIVE_MORNING_BRIEFING_ENABLED", False):
             nudges = fresh_engine.check_once()
 
         self.assertEqual(runner_calls, ["good morning"])
