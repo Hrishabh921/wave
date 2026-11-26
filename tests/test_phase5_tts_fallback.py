@@ -362,8 +362,11 @@ class TTSFallbackTests(_TTSFakeHarnessMixin, unittest.TestCase):
         # win32com/pythoncom aren't available outside Windows - confirm
         # the honest "really not available" case still reports False
         # (not a silent success) rather than asserting on Windows-only
-        # internals this environment can't exercise.
-        self.assertFalse(self.engine._speak_via_sapi("hello"))
+        # internals this environment can't exercise. On Windows they ARE
+        # importable, and this used to make the real SAPI voice say "hello"
+        # out loud on every test run - so they're hidden here.
+        with mock.patch.dict(sys.modules, {"win32com": None, "win32com.client": None, "pythoncom": None}):
+            self.assertFalse(self.engine._speak_via_sapi("hello"))
 
 
 # =============================================================================

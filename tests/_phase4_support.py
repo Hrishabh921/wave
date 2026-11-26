@@ -90,6 +90,95 @@ for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GRO
         setattr(sys.modules["settings.config"].config, _flag, False)
 
 
+# Tests never touch the developer's real volume, screen brightness, keyboard
+# or mouse. On the owner's laptop every full run turned the master volume up
+# (test_phase8's think("volume up"), twice per run - it was at 100% after a
+# day of runs) and pyautogui, which IS installed there, would have pressed
+# real keys for any media/typing tool a test dispatched. Every volume path
+# in Wave goes through pycaw's AudioUtilities.GetSpeakers().EndpointVolume
+# and every brightness path through screen_brightness_control, so those two
+# calls get an in-memory stand-in for the whole run, and pyautogui's input
+# functions record instead of acting. A test that checks one of these
+# itself still patches it as before.
+class _FakeEndpointVolume:
+    def __init__(self):
+        self.level, self.muted = 0.5, 0
+
+    def GetMasterVolumeLevelScalar(self):
+        return self.level
+
+    def SetMasterVolumeLevelScalar(self, value, _context=None):
+        self.level = max(0.0, min(1.0, float(value)))
+
+    def GetMute(self):
+        return self.muted
+
+    def SetMute(self, value, _context=None):
+        self.muted = 1 if value else 0
+
+
+class _FakeSpeakers:
+    def __init__(self):
+        self.EndpointVolume = _FakeEndpointVolume()
+
+
+FAKE_SPEAKERS = _FakeSpeakers()
+FAKE_BRIGHTNESS = [60]
+PYAUTOGUI_CALLS = []
+
+try:
+    from pycaw.pycaw import AudioUtilities as _AudioUtilities
+    _AudioUtilities.GetSpeakers = staticmethod(lambda: FAKE_SPEAKERS)
+except Exception:          # no pycaw (not Windows): nothing real to protect
+    pass
+try:
+    import screen_brightness_control as _sbc
+    _sbc.get_brightness = lambda *a, **k: list(FAKE_BRIGHTNESS)
+    _sbc.set_brightness = lambda value, *a, **k: FAKE_BRIGHTNESS.__setitem__(0, int(value))
+except Exception:
+    pass
+try:
+    import pyautogui as _pyautogui
+    for _name in ("press", "hotkey", "typewrite", "write", "keyDown", "keyUp", "click", "doubleClick",
+                  "tripleClick", "rightClick", "middleClick", "mouseDown", "mouseUp", "moveTo", "moveRel",
+                  "move", "dragTo", "dragRel", "drag", "scroll", "hscroll", "vscroll"):
+        if hasattr(_pyautogui, _name):
+            setattr(_pyautogui, _name, (lambda n: lambda *a, **k: PYAUTOGUI_CALLS.append((n, a, k)))(_name))
+except BaseException:      # not installed / no display: the tests' own fakes stand in
+    pass
+
+
+def silence_tts(testcase) -> None:
+    """Every VoiceEngine reachable as some module's `tts_engine` stays silent
+    for this test: speak_stream() reads its input the way the voice would and
+    speak() does nothing. Some test files evict and re-import voice.tts, so a
+    process can hold several engines - patching only voice.tts.tts_engine let
+    the web UI's reply worker (still holding the first one) say "hello world"
+    out loud on the owner's laptop."""
+    from unittest import mock  # noqa: PLC0415
+    engines = {}
+    for name, module in list(sys.modules.items()):
+        # Wave's own modules only, read straight from __dict__: some
+        # libraries' module __getattr__ (torch._classes) invent an attribute
+        # for any name and raise on hasattr().
+        if not name.split(".")[0] in ("voice", "webui", "ui", "brain", "avatar", "remote"):
+            continue
+        engine = getattr(module, "__dict__", {}).get("tts_engine")
+        if engine is not None and type(engine).__name__ == "VoiceEngine":
+            engines[id(engine)] = engine
+
+    def speak_stream(chunks):
+        for _piece in chunks:
+            pass
+        return True
+
+    for engine in engines.values():
+        for name, fake in (("speak_stream", speak_stream), ("speak", lambda *a, **k: None)):
+            patcher = mock.patch.object(engine, name, side_effect=fake)
+            patcher.start()
+            testcase.addCleanup(patcher.stop)
+
+
 def make_tmpdir(testcase) -> str:
     d = tempfile.mkdtemp(prefix="wave_p4_")
     testcase.addCleanup(shutil.rmtree, d, ignore_errors=True)

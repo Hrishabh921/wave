@@ -88,6 +88,10 @@ def _stop_and_join_reminder_worker(worker, timeout=2):
 
 class _DbIsolatedTestBase(unittest.TestCase):
     def setUp(self):
+        # The bridge speaks chat replies (speak_reply=True) and due reminders
+        # through the real voice - these tests said "hello world" out loud on
+        # every run. Every engine in the process stays silent here.
+        S.silence_tts(self)
         self.old_path = db.db_path
         tmp = S.make_tmpdir(self)
         db.db_path = os.path.join(tmp, "t.db")
