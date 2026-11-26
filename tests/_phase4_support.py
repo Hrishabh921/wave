@@ -3,9 +3,13 @@ extra installs needed:   python -m unittest discover -s tests -p "test_phase4_*.
 (pytest will also collect them if you have it)."""
 import atexit
 import os
+import socket
 import sys
 import tempfile
+import threading
+import traceback
 import shutil
+import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -83,8 +87,13 @@ if "settings.config" in sys.modules:
 # Tier 47: and never search the real web or read the real foreground window.
 # Tier 48: and never drop a scripted transcript as an echo of a test's speech.
 # Tier 49: and never read what the developer's speakers are playing.
+# And never have the real model reword a proactive nudge or a due reminder:
+# both build their own client from the developer's .env, so every nudge
+# test_phase6_proactive fired was a request to api.groq.com (see the guard
+# below). test_tier18_proactive_triggers.py and test_tier3_reminders.py
+# switch them on with a fake client.
 for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE",
-              "ECHO_GUARD", "AEC_SYSTEM_REFERENCE"):
+              "ECHO_GUARD", "AEC_SYSTEM_REFERENCE", "PROACTIVE_LLM_REWORD_ENABLED", "CONTEXTUAL_REMINDER_LLM"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)
@@ -146,6 +155,77 @@ try:
             setattr(_pyautogui, _name, (lambda n: lambda *a, **k: PYAUTOGUI_CALLS.append((n, a, k)))(_name))
 except BaseException:      # not installed / no display: the tests' own fakes stand in
     pass
+
+
+# No test reaches a real LLM provider either. settings/config.py's
+# load_dotenv() puts the developer's GROQ_API_KEY into every run, and the
+# helpers that build their own client from it (the proactive nudge reword,
+# the reminder composer, the health check) spent the owner's free-tier
+# quota: 22 requests to api.groq.com per full run. Every HTTP client looks
+# a host up with socket.getaddrinfo first, so looking up a provider's host
+# now fails at once - nothing leaves the machine - and the test that tried
+# fails, naming the host and the Wave code that called it. Point such a
+# test at tests/_fake_openai.py (BrainBase in test_phase4_brain.py) or mock
+# the provider.
+_REAL_LLM_HOSTS = ("groq.com", "openai.com", "openrouter.ai")
+REAL_LLM_REQUESTS = []          # (host, thread name, Wave's part of the stack) per blocked lookup
+_running_test = None
+
+
+def _real_llm_host(host):
+    name = host.decode("ascii", "replace") if isinstance(host, (bytes, bytearray)) else str(host or "")
+    name = name.strip().rstrip(".").lower()
+    return name if any(name == h or name.endswith("." + h) for h in _REAL_LLM_HOSTS) else None
+
+
+def _caller_stack() -> str:
+    """The lookup's stack without the library frames (httpx, the groq SDK,
+    unittest, threading) - what is left is the test and the Wave code."""
+    frames = traceback.extract_stack()[:-2]
+    skip = tuple({os.path.normcase(sys.prefix), os.path.normcase(sys.base_prefix)}) + ("<",)
+    here = os.path.normcase(os.path.abspath(__file__))
+    own = [f for f in frames if not os.path.normcase(f.filename).startswith(skip)
+           and "site-packages" not in f.filename and os.path.normcase(f.filename) != here]
+    return "".join(traceback.format_list(own or frames))
+
+
+def _no_real_llm_getaddrinfo(host, *args, **kwargs):
+    name = _real_llm_host(host)
+    if name is None:
+        return _real_getaddrinfo(host, *args, **kwargs)
+    thread, stack = threading.current_thread().name, _caller_stack()
+    REAL_LLM_REQUESTS.append((name, thread, stack))
+    sys.stderr.write(f"\n*** BLOCKED a real request to {name} ({_running_test or 'outside any test'}, thread "
+                     f"{thread}) - tests use tests/_fake_openai.py or a mocked provider.\n")
+    if _running_test is None:      # no test to fail, so the stack goes to the log
+        sys.stderr.write(stack)
+    raise socket.gaierror(socket.EAI_NONAME, f"tests may not reach the real LLM provider {name}")
+
+
+def _run_without_real_llm(self, result=None):
+    global _running_test
+    first = len(REAL_LLM_REQUESTS)
+
+    def no_real_llm_requests():
+        made = REAL_LLM_REQUESTS[first:]
+        if made:
+            name, thread, stack = made[0]
+            raise AssertionError(f"{len(made)} real LLM request(s) blocked during this test, the first to "
+                                 f"{name} on thread {thread}:\n{stack}")
+
+    self.addCleanup(no_real_llm_requests)   # added first, so it runs last: after the test's own cleanups
+    outer, _running_test = _running_test, self.id()
+    try:
+        return _real_testcase_run(self, result)
+    finally:
+        _running_test = outer
+
+
+if not getattr(socket.getaddrinfo, "_no_real_llm", False):   # once per process, even if re-imported
+    _real_getaddrinfo, _real_testcase_run = socket.getaddrinfo, unittest.TestCase.run
+    _no_real_llm_getaddrinfo._no_real_llm = True
+    socket.getaddrinfo = _no_real_llm_getaddrinfo
+    unittest.TestCase.run = _run_without_real_llm
 
 
 def silence_tts(testcase) -> None:

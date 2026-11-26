@@ -28,6 +28,7 @@ is installed, those tests skip themselves (see REAL_QT below).
 Run: python -m unittest discover -s tests -p "test_tier19_health_ollama.py"
 (pytest will also collect it.)
 """
+import os
 import subprocess
 import sys
 import threading
@@ -36,6 +37,7 @@ import unittest
 from unittest import mock
 
 import _phase4_support as S  # noqa: F401  (adds the repo root to sys.path)
+from _fake_openai import FakeOpenAI, Reply
 
 from automation.health_check import CheckResult, Status, run_health_check, format_report, all_critical_ok
 from brain.ollama_lifecycle import OllamaLifecycle
@@ -104,12 +106,21 @@ class CheckResultPlumbingTests(unittest.TestCase):
         # models, LLM, Tesseract." Whatever this sandbox's actual verdicts
         # are (no audio hardware, no GROQ_API_KEY, etc.), the five checks
         # themselves must always run and never raise out to the caller.
-        results = run_health_check()
+        # The LLM check asks a local fake provider: from the developer's .env
+        # it called the real Groq API on every run.
+        srv = FakeOpenAI().start()
+        self.addCleanup(srv.stop)
+        srv.get_routes["/v1/models"] = Reply(200, {"data": []})
+        env = {"LLM_PROVIDER": "custom", "LLM_BASE_URL": srv.url, "LLM_MODEL": "test-model",
+               "LLM_API_KEY": "sk-test-1234567890"}
+        with mock.patch.dict(os.environ, env):
+            results = run_health_check()
         self.assertEqual([r.name for r in results],
                          ["Microphone", "Speaker", "Voice models", "LLM provider", "Tesseract OCR"])
         for r in results:
             self.assertIsInstance(r.status, Status)
             self.assertTrue(r.message)
+        self.assertEqual(results[3].status, Status.OK, results[3].message)
 
 
 # =============================================================================

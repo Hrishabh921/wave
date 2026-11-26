@@ -139,6 +139,11 @@ class TestReminderComposer(unittest.TestCase):
         original = composer_mod._get_client_and_cfg
         self.addCleanup(lambda: setattr(composer_mod, "_get_client_and_cfg", original))
         self.composer = composer_mod.ReminderComposer()
+        # tests/_phase4_support.py turns the model wording off for the whole
+        # run; these are its own tests, each with a fake client.
+        from settings.config import config
+        self.addCleanup(setattr, config, "CONTEXTUAL_REMINDER_LLM", config.CONTEXTUAL_REMINDER_LLM)
+        config.CONTEXTUAL_REMINDER_LLM = True
 
     def _patch_client(self, reply_text=None, delay=0.0, configured=True):
         class FakeMessage:
