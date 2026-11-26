@@ -245,6 +245,21 @@ def _prefix_or_suffix_arg(skill: str, arg_name: str, prefixes: Tuple[str, ...] =
     return m
 
 
+_SOUND_WORDS = frozenset("sound awaaz aawaz awaz volume audio music gaana gaane gana speaker speakers".split())
+
+
+def _not_sound(matcher: _Matcher) -> _Matcher:
+    """Tier 50 (bench/heldout/): "sound bilkul band kar do" means mute, not
+    close an app called "sound bilkul" - an "app" named by a sound word
+    isn't routed (the semantic fallback and the model take it)."""
+    def m(lower: str) -> RouteResult:
+        result = matcher(lower)
+        if result is not None and set(str(result[1].get("app_name", "")).split()) & _SOUND_WORDS:
+            return None
+        return result
+    return m
+
+
 def _delete_screenshot(lower: str) -> RouteResult:
     return ("delete_latest_screenshot", {}) if "delete" in lower and "screenshot" in lower else None
 
@@ -673,8 +688,16 @@ def _set_percent_cmd(lower: str, skill: str, trigger_words: Tuple[str, ...]) -> 
     m = _PCT_RE.search(lower)
     if not m:
         return None
+    # Tier 50 (found by bench/heldout/): "volume 2 of the book" set the
+    # volume to 2%. Nothing but "percent"/"kar do"-style words may follow
+    # the number.
+    if any(w not in _PCT_TAIL_OK for w in re.findall(r"[^\s]+", lower[m.end():])):
+        return None
     pct = int(m.group(1))
     return (skill, {"percent": pct}) if 0 <= pct <= 100 else None
+
+
+_PCT_TAIL_OK = frozenset("% percent pe par kar karo kardo krdo do please pls rakho set kijiye".split())
 
 
 def _set_volume_percent(lower: str) -> RouteResult:
@@ -795,6 +818,9 @@ _RULES: List[_Rule] = [
         "show_desktop",
         "show the desktop", "show desktop", "minimize all windows", "minimize everything",
         "sab window minimize karo", "desktop dikhao",
+        # Tier 50 (bench/heldout/): these reached minimize_window("all the windows")
+        "minimize all the windows", "minimize all my windows", "sab windows minimize",
+        "sari windows minimize", "saari windows minimize",
         "डेस्कटॉप दिखाओ",  # Devanagari
     )),
     _Rule("switch_window", _contains(
@@ -1059,11 +1085,11 @@ _RULES: List[_Rule] = [
     # Tier 11: + "kill <app>" (the UI's removed keyword layer handled it).
     # close_app is T2, so this still asks before closing anything. "quit"
     # is deliberately not added: "quit smoking tips" is not a command.
-    _Rule("close_app", _prefix_or_suffix_arg(
+    _Rule("close_app", _not_sound(_prefix_or_suffix_arg(
         "close_app", "app_name",
         prefixes=("close ", "kill "),
         suffixes=(" band karo", " band kar do", " बंद करो"),
-    )),
+    ))),
     # Tier 17: before play_youtube, whose own bare "play " prefix has no
     # suffix requirement at all - see _play_on_spotify's own docstring
     # above for exactly why this needs to run first.
@@ -1400,7 +1426,14 @@ _HYPOTHETICAL_MARKERS = (
     # mujhe" just above - safe to add unconditionally, no legitimate
     # direct command says "ya nahi".
     "ya nahi",
+    # Tier 50 (found by bench/heldout/): "how do i increase brightness on a
+    # mac" raised this PC's brightness - a how-to question isn't a request.
+    "how do i ", "how can i ", "how do you ", "how to ", "how does ", "kaise karte", "kaise kare",
+    "kaise karu",
 )
+# Tier 50: and a story isn't a request - "my sister took a screenshot of our
+# chat" took one.
+_NARRATIVE_MARKERS = (" took ", " taken ", "yesterday", "last night")
 _CONDITIONAL_MARKERS = (
     " after ", " before ", " once ", " unless ", " if i ", " if you ", " if we ", " agar ",
 )
@@ -1441,6 +1474,7 @@ def _is_compound_or_ambiguous(lower: str) -> bool:
             or any(m in lower for m in _NEGATION_MARKERS)
             or any(m in lower for m in _HYPOTHETICAL_MARKERS)
             or any(m in lower for m in _CONDITIONAL_MARKERS)
+            or any(m in f" {lower} " for m in _NARRATIVE_MARKERS)
             or _has_standalone_negator(lower))
 
 

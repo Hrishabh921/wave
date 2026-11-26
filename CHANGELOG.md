@@ -2,6 +2,20 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 50 — A held-out command set, and the fast-path bugs it found (2026-11-26)
+
+`bench/golden/` is the fast path's regression set - every rule was written with those sentences in view, so its 100% says little about a sentence the user says another way. SARA keeps held-out sets for exactly that. New `bench/heldout/commands.jsonl`: 76 everyday commands in other words ("bump the volume up", "gaana thoda rok do", "is the laptop charging") and 41 sentences that must run nothing ("the brightness of the sun hurts", "skip the ads", "volume 2 of the book"), written once and never used to tune anything. New `bench/heldout_bench.py` measures what a user would get - the fast path alone, and with Tier 45's semantic fallback after it on the real sentence model - and `--gate` fails on any wrong action or false trigger from the semantic layer.
+
+First run, unseen: the fast path alone ran 19 of the 76 commands right (25%), with the semantic fallback 56 (74%; English 77%, Hinglish 65%) - and the semantic layer caused no wrong action and no false trigger. The fast path caused six, all real bugs, now fixed in `brain/intent_router.py`:
+- "volume 2 of the book" set the volume to 2% - a set_volume/set_brightness number must now end the command (only "percent", "kar do", "pe" and the like may follow it);
+- "how do i increase brightness on a mac" raised this PC's brightness - "how do i / how can i / how to / how does / kaise karte" now mark a question, like "should i";
+- "my sister took a screenshot of our chat" took a screenshot - " took ", " taken ", "yesterday", "last night" now mark a story, not a request;
+- "sound bilkul band kar do" tried to close an app called "sound bilkul" - close_app no longer takes a sound word (sound, awaaz, volume, music, gaana ...) as an app's name;
+- "minimize all the windows" / "sari windows minimize kar do" looked for a window by that name - they now show the desktop (what minimize_all_windows does).
+After the fixes (no longer held-out for them): 58 of 76 right, no wrong action, one harmless false trigger left ("minimize the risk" looks for a window called "the risk" and says there is none). The golden set stays at 100% with no regressions. Results: `bench/results/HELDOUT.md`.
+
+**Type checks are not done yet:** CI already runs mypy over the whole codebase as an advisory job; making a typed core blocking (as SARA's CI does) needs mypy run locally first to see what fails, and mypy isn't installed on the owner's PC yet. 7 new tests in `tests/test_tier50_heldout.py`.
+
 ## Tier 49 — What the PC plays is cancelled from the mic too, and the tests stop listening (2026-11-26)
 
 The echo canceller (`voice/aec.py`) only knew Wave's own voice - the samples it plays. With YouTube, Spotify or a call playing, the mic heard that too and Whisper wrote it down (lyrics, a video's dialogue) along with, or instead of, what the user said. SARA feeds the final mix going to the speakers - Windows' WASAPI loopback - to its canceller as the reference (it measured 4 dB of echo removed without it, 26 dB with it). Now Wave does too:

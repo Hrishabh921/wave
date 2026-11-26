@@ -51,6 +51,20 @@ forget and abstain questions, each judged on exactly the lines the model would
 be shown (`brain/memory_context.py`, `brain/episodic_recall.py`). Needs the
 sentence model (exit 4 without it). Results: `bench/results/MEMORY.md`.
 
+## Held-out commands (Tier 50)
+
+```bash
+python -m bench.heldout_bench                                 # fast path alone vs. + semantic fallback
+python -m bench.heldout_bench --gate                          # exit 1 on any wrong action / false trigger from the semantic layer
+```
+
+`bench/heldout/commands.jsonl` - 76 everyday commands said in other words and
+41 sentences that must run nothing, written once and never used to tune a rule,
+threshold or example (unlike `golden/`, which every rule was written against).
+Measures what a user who says it differently gets: `brain/intent_router.py`
+alone, and with Tier 45's semantic fallback after it (needs the sentence model
+for the second column). Results: `bench/results/HELDOUT.md`.
+
 ## Data
 
 - `golden/intents_en.jsonl`, `intents_hi.jsonl`, `intents_hinglish.jsonl` -

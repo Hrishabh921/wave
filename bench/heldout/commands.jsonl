@@ -1,0 +1,117 @@
+{"t": "bump the volume up", "i": "volume_up", "l": "en"}
+{"t": "can you make the audio a bit louder", "i": "volume_up", "l": "en"}
+{"t": "awaaz thodi tez kar do please", "i": "volume_up", "l": "hinglish"}
+{"t": "i can hardly hear the speakers, louder", "i": "volume_up", "l": "en"}
+{"t": "the speakers are too loud", "i": "volume_down", "l": "en"}
+{"t": "please lower the audio", "i": "volume_down", "l": "en"}
+{"t": "awaaz kam kardo yaar", "i": "volume_down", "l": "hinglish"}
+{"t": "bring the sound down a little", "i": "volume_down", "l": "en"}
+{"t": "mute the audio", "i": "mute_volume", "l": "en"}
+{"t": "silence everything", "i": "mute_volume", "l": "en"}
+{"t": "sound bilkul band kar do", "i": "mute_volume", "l": "hinglish"}
+{"t": "turn the speakers off", "i": "mute_volume", "l": "en"}
+{"t": "unmute please", "i": "unmute_volume", "l": "en"}
+{"t": "bring back the audio", "i": "unmute_volume", "l": "en"}
+{"t": "sound wapas on karo", "i": "unmute_volume", "l": "hinglish"}
+{"t": "increase the brightness a little", "i": "brightness_up", "l": "en"}
+{"t": "screen ko thoda bright karo", "i": "brightness_up", "l": "hinglish"}
+{"t": "make the monitor brighter", "i": "brightness_up", "l": "en"}
+{"t": "the display is too dark to read", "i": "brightness_up", "l": "en"}
+{"t": "decrease the brightness", "i": "brightness_down", "l": "en"}
+{"t": "screen ki roshni thodi kam karo", "i": "brightness_down", "l": "hinglish"}
+{"t": "make the monitor dimmer", "i": "brightness_down", "l": "en"}
+{"t": "the screen is way too bright at night", "i": "brightness_down", "l": "en"}
+{"t": "take a screen capture", "i": "take_screenshot", "l": "en"}
+{"t": "grab a screenshot of this", "i": "take_screenshot", "l": "en"}
+{"t": "screen ka screenshot le lo", "i": "take_screenshot", "l": "hinglish"}
+{"t": "capture whatever is on screen", "i": "take_screenshot", "l": "en"}
+{"t": "pause the song please", "i": "media_play_pause", "l": "en"}
+{"t": "resume the song", "i": "media_play_pause", "l": "en"}
+{"t": "gaana thoda rok do", "i": "media_play_pause", "l": "hinglish"}
+{"t": "stop the music for now", "i": "media_play_pause", "l": "en"}
+{"t": "skip to the next song", "i": "media_next_track", "l": "en"}
+{"t": "next song chalao", "i": "media_next_track", "l": "hinglish"}
+{"t": "play the next track", "i": "media_next_track", "l": "en"}
+{"t": "skip this track please", "i": "media_next_track", "l": "en"}
+{"t": "play the previous song", "i": "media_previous_track", "l": "en"}
+{"t": "go back to the previous track", "i": "media_previous_track", "l": "en"}
+{"t": "pichla song lagao", "i": "media_previous_track", "l": "hinglish"}
+{"t": "what reminders are pending", "i": "list_reminders", "l": "en"}
+{"t": "do i have any reminders", "i": "list_reminders", "l": "hinglish"}
+{"t": "mujhe kya yaad dilana hai", "i": "list_reminders", "l": "hinglish"}
+{"t": "show the reminders list", "i": "list_reminders", "l": "en"}
+{"t": "give me a summary of my day", "i": "daily_briefing", "l": "en"}
+{"t": "what's my plan for today", "i": "daily_briefing", "l": "en"}
+{"t": "aaj ka din kaisa rahega", "i": "daily_briefing", "l": "hinglish"}
+{"t": "my daily summary please", "i": "daily_briefing", "l": "en"}
+{"t": "how's the weather outside", "i": "get_weather", "l": "en"}
+{"t": "is it going to be hot today", "i": "get_weather", "l": "en"}
+{"t": "bahar garmi hai kya", "i": "get_weather", "l": "hinglish"}
+{"t": "will i need an umbrella today", "i": "get_weather", "l": "en"}
+{"t": "what's the current time", "i": "get_current_time", "l": "en"}
+{"t": "time kya ho raha hai", "i": "get_current_time", "l": "hinglish"}
+{"t": "abhi kitne baje hain", "i": "get_current_time", "l": "hinglish"}
+{"t": "can you tell me the time", "i": "get_current_time", "l": "en"}
+{"t": "what's the date", "i": "get_current_date", "l": "en"}
+{"t": "today's date kya hai", "i": "get_current_date", "l": "hinglish"}
+{"t": "aaj ki date batao", "i": "get_current_date", "l": "hinglish"}
+{"t": "which day of the month is today", "i": "get_current_date", "l": "en"}
+{"t": "how much battery is left", "i": "get_battery_status", "l": "en"}
+{"t": "battery status please", "i": "get_battery_status", "l": "en"}
+{"t": "laptop ki battery kitni hai", "i": "get_battery_status", "l": "hinglish"}
+{"t": "is the laptop charging", "i": "get_battery_status", "l": "en"}
+{"t": "minimize all the windows", "i": "minimize_all_windows", "l": "en"}
+{"t": "hide every window", "i": "minimize_all_windows", "l": "en"}
+{"t": "sari windows minimize kar do", "i": "minimize_all_windows", "l": "hinglish"}
+{"t": "what's the latest news", "i": "get_news", "l": "en"}
+{"t": "any news today", "i": "get_news", "l": "en"}
+{"t": "aaj ki taaza khabar", "i": "get_news", "l": "hinglish"}
+{"t": "read the headlines", "i": "get_news", "l": "en"}
+{"t": "show my todo list", "i": "list_todos", "l": "en"}
+{"t": "what's left on my task list", "i": "list_todos", "l": "en"}
+{"t": "kaunse kaam pending hain", "i": "list_todos", "l": "hinglish"}
+{"t": "list my pending tasks", "i": "list_todos", "l": "en"}
+{"t": "what's on the clipboard", "i": "get_clipboard", "l": "en"}
+{"t": "read the clipboard", "i": "get_clipboard", "l": "en"}
+{"t": "clipboard mein kya copy hai", "i": "get_clipboard", "l": "hinglish"}
+{"t": "i was listening to loud music at the party", "i": "chat", "l": "en"}
+{"t": "the brightness of the sun hurts", "i": "chat", "l": "en"}
+{"t": "my sister took a screenshot of our chat", "i": "chat", "l": "en"}
+{"t": "the next episode comes out friday", "i": "chat", "l": "en"}
+{"t": "what does mute mean", "i": "chat", "l": "en"}
+{"t": "why is my screen flickering", "i": "chat", "l": "en"}
+{"t": "how do i increase brightness on a mac", "i": "chat", "l": "hinglish"}
+{"t": "remind me to buy milk at 5", "i": "chat", "l": "en"}
+{"t": "i'm feeling a bit down today", "i": "chat", "l": "en"}
+{"t": "the volume of a sphere formula", "i": "chat", "l": "en"}
+{"t": "what's the weather like on mars", "i": "chat", "l": "en"}
+{"t": "the song was too long", "i": "chat", "l": "en"}
+{"t": "the battery of my car is dead", "i": "chat", "l": "en"}
+{"t": "i like dark chocolate", "i": "chat", "l": "en"}
+{"t": "pause, let me think about it", "i": "chat", "l": "en"}
+{"t": "copy the text from this page", "i": "chat", "l": "en"}
+{"t": "skip the ads", "i": "chat", "l": "en"}
+{"t": "go back to the previous page", "i": "chat", "l": "en"}
+{"t": "minimize the risk", "i": "chat", "l": "en"}
+{"t": "the news made me sad", "i": "chat", "l": "en"}
+{"t": "what time does the match start", "i": "chat", "l": "en"}
+{"t": "date night ideas", "i": "chat", "l": "en"}
+{"t": "the screen size of iphone 15", "i": "chat", "l": "en"}
+{"t": "is it hot in dubai in june", "i": "chat", "l": "en"}
+{"t": "tell me about the time machine movie", "i": "chat", "l": "en"}
+{"t": "list the planets", "i": "chat", "l": "en"}
+{"t": "what's the capital of japan", "i": "chat", "l": "en"}
+{"t": "sing a song", "i": "chat", "l": "en"}
+{"t": "who sings this song", "i": "chat", "l": "en"}
+{"t": "how loud is a jet engine", "i": "chat", "l": "en"}
+{"t": "my phone's clipboard is full", "i": "chat", "l": "en"}
+{"t": "volume 2 of the book", "i": "chat", "l": "en"}
+{"t": "a brighter future for kids", "i": "chat", "l": "en"}
+{"t": "turn the page", "i": "chat", "l": "en"}
+{"t": "next level stuff", "i": "chat", "l": "en"}
+{"t": "the previous owner", "i": "chat", "l": "en"}
+{"t": "silent night is a song", "i": "chat", "l": "en"}
+{"t": "make some tea", "i": "chat", "l": "en"}
+{"t": "show me the desktop wallpaper settings", "i": "chat", "l": "en"}
+{"t": "kal ka mausam kaisa tha", "i": "chat", "l": "hinglish"}
+{"t": "mera phone kahan hai", "i": "chat", "l": "hinglish"}
