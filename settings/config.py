@@ -498,6 +498,9 @@ class Config:
     # email subject) go to the cloud model only with CONTEXT_WINDOW_TITLES=true.
     CONTEXT_LINE = os.getenv("CONTEXT_LINE", "true").strip().lower() not in ("false", "0", "no")
     CONTEXT_WINDOW_TITLES = os.getenv("CONTEXT_WINDOW_TITLES", "false").strip().lower() in ("true", "1", "yes")
+    # Tier 48: a transcript of Wave's own sentence, heard back while it was
+    # talking (what the echo canceller missed), is dropped (voice/echo_guard.py).
+    ECHO_GUARD = os.getenv("ECHO_GUARD", "true").strip().lower() not in ("false", "0", "no")
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while

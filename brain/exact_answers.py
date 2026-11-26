@@ -9,6 +9,9 @@ Wave: date differences (days until / since a date), a date N days or weeks
 from today or ago, the weekday of a date, and percentages - in English,
 Hinglish and Hindi phrasing, answered in the same language. Anything else
 returns None and goes to the model as before. Pure functions, no I/O.
+Tier 48 adds unit conversions - "5 km in miles", "how many cm in a foot",
+"2 kilo kitne pound hote hain", "37 degrees celsius in fahrenheit" - with
+the convert_units tool's own tables (automation/calculator.py).
 """
 import re
 from datetime import date, timedelta
@@ -137,4 +140,67 @@ def answer(text: str, today: date = None):
         if hinglish:
             return f"Us din {_fmt(d)} {'tha' if back else 'hoga'}."
         return f"That {'was' if back else 'will be'} {_fmt(d)}."
+
+    return _conversion(text, hinglish)
+
+
+# ---- Tier 48: unit conversions ("5 km in miles", "2 kilo kitne pound") ----
+# automation/calculator.py's tables (the convert_units tool's), so the two
+# never disagree. "in", "c", "f", "k" alone are too ambiguous to be units
+# here; currencies need today's rate and go to the model.
+_UNIT_ALIASES = {"kilo": "kg", "kilos": "kg", "°c": "c", "°f": "f", "degree celsius": "c", "degrees celsius": "c",
+                 "degree fahrenheit": "f", "degrees fahrenheit": "f", "centigrade": "c", "litre": "l", "liter": "l"}
+
+
+def _unit_pattern() -> str:
+    from automation.calculator import unit_names  # noqa: PLC0415
+    words = set(unit_names()) - {"in", "c", "f", "k"}
+    words |= set(_UNIT_ALIASES)
+    return "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+
+
+_U = _unit_pattern()
+_V = r"(?P<v>-?\d+(?:\.\d+)?)"
+_ASK = r"^\W*(?:(?:what(?:'s| is)|how much is|tell me|batao|bata do)\s+)?"
+_CONVERT = (
+    # "convert 5 km to miles", "what is 5 km in miles?", "100 fahrenheit in celsius", "5 km ko miles mein badlo"
+    re.compile(_ASK + r"(?:convert\s+)?" + _V + r"\s*(?P<f>" + _U + r")\s+(?:in|to|into|ko|=)\s+(?P<t>" + _U + r")\b"
+               r"(?:\s+(?:mein|me|main))?(?:\s+(?:badlo|badal do|convert karo|kitna|kitne|kya hai|hota hai|"
+               r"hote hain|hai|please))?\W*$", re.I),
+    # "how many cm in a foot", "how many miles are in 10 km"
+    re.compile(r"^\W*how many\s+(?P<t>" + _U + r")\s+(?:are\s+)?(?:there\s+)?in\s+(?:a\s+|an\s+|one\s+|" + _V
+               + r"\s*)(?P<f>" + _U + r")\W*$", re.I),
+    # "5 km is how many miles", "2 kilo kitne pound hote hain", "5 km mein kitne mile"
+    re.compile(_ASK + _V + r"\s*(?P<f>" + _U + r")\s+(?:(?:mein|me|main|is|are|equals)\s+)?(?:kitne|kitna|kitni|"
+               r"how many)\s+(?P<t>" + _U + r")\b(?:\s+(?:hote hain|hota hai|hain|hai|honge|hoga))?\W*$", re.I),
+)
+
+
+def _number(x: float) -> str:
+    if abs(x) >= 100:
+        x = round(x, 1)
+    elif abs(x) >= 1:
+        x = round(x, 2)
+    else:
+        x = float(f"{x:.4g}")
+    return str(int(x)) if x == int(x) else f"{x}".rstrip("0").rstrip(".")
+
+
+def _conversion(text: str, hinglish: bool):
+    from automation.calculator import convert_value  # noqa: PLC0415
+    for pattern in _CONVERT:
+        m = pattern.search(text)
+        if not m:
+            continue
+        f_word, t_word = m.group("f"), m.group("t")
+        value = float(m.group("v")) if m.group("v") else 1.0
+        f = _UNIT_ALIASES.get(f_word.lower(), f_word)
+        t = _UNIT_ALIASES.get(t_word.lower(), t_word)
+        out = convert_value(value, f, t)
+        if out is None:
+            return None
+        shown = _number(value)
+        if hinglish:
+            return f"{shown} {f_word} {_number(out)} {t_word} {'hote hain' if out != 1 else 'hota hai'}."
+        return f"{shown} {f_word} is {_number(out)} {t_word}."
     return None

@@ -69,7 +69,9 @@ if "settings.config" in sys.modules:
 # chat history to a test's prompt, or set aside a database's facts.
 # tests/test_tier46_memory.py switches them on itself.
 # Tier 47: and never search the real web or read the real foreground window.
-for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE"):
+# Tier 48: and never drop a scripted transcript as an echo of a test's speech.
+for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE",
+              "ECHO_GUARD"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)

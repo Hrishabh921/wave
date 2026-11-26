@@ -19,6 +19,7 @@ import pygame
 
 from settings.config import config
 from voice.aec import aec_processor, resample_linear
+from voice.echo_guard import echo_guard
 from voice.tts_cache import phrase_cache
 # Tier 13: `import voice.X as X`, not `from voice import X` - the latter
 # resolves via hasattr() on the already-cached `voice` package object,
@@ -297,7 +298,8 @@ _MD_UNDERSCORE_RE = re.compile(r"(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])")
 def clean_for_speech(text: str) -> str:
     """Removes markdown emphasis/heading/code markers from `text` so the
     voice doesn't read them out, while keeping underscores and '#' that
-    belong to a word (file names, identifiers, "C#")."""
+    belong to a word (file names, identifiers, "C#"). Numbers, units and
+    times become words later, per voice (voice/text_prep.py)."""
     text = text or ""
     text = text.replace("`", "").replace("*", "")
     text = _MD_HEADING_RE.sub("", text)
@@ -1057,10 +1059,14 @@ class VoiceEngine:
         watchdog = threading.Timer(self._watchdog_seconds(text), self._force_reset)
         watchdog.daemon = True
         watchdog.start()
+        echo_token = None
         try:
             clean_text = clean_for_speech(text)
             if not clean_text or self.stop_event.is_set():
                 return  # nothing to say, or interrupted before starting - not a failure
+            # Tier 48: noted, so this sentence heard back through the mic
+            # isn't taken for the user's words (voice/echo_guard.py).
+            echo_token = echo_guard.started(clean_text)
 
             # Tier 25: the user's own cloned voice, if a reference sample
             # has been set up (Settings -> Avatar) - tried FIRST, ahead of
@@ -1164,6 +1170,7 @@ class VoiceEngine:
             played_ok = False
         finally:
             watchdog.cancel()
+            echo_guard.finished(echo_token)
             self.is_speaking = False
             self.last_playback_ok = played_ok
             try:

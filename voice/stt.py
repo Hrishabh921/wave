@@ -10,6 +10,7 @@ from voice.aec import aec_processor
 from voice.buffers import get_vad
 from voice import transcript_filter
 from voice import endpoint_cues
+from voice.echo_guard import echo_guard
 from voice import vocabulary
 # Tier 13: `import voice.language as language`, not `from voice import
 # language` - the latter resolves via hasattr() on the already-cached
@@ -720,6 +721,15 @@ class SpeechReceiver:
             return None
         result = self._recognize(audio, wake_detected=wake_detected, allow_cloud=allow_cloud,
                                  audio_s=audio_s, snr_db=snr_db)
+        # Tier 48: Wave's own sentence, heard back while it was talking (what
+        # the echo canceller missed), is not the user speaking.
+        if isinstance(result, Transcript) and str(result).strip():
+            heard_to = timing.get("speech_end") or timing.get("captured_at")
+            heard_from = heard_to - audio_s if (heard_to is not None and audio_s) else None
+            if echo_guard.is_echo(str(result), heard_from=heard_from, heard_to=heard_to,
+                                  confidence=result.confidence):
+                logger.info(f"Dropped as Wave's own voice coming back: {str(result)[:60]!r}")
+                result = Transcript("", wake_detected=wake_detected, engine=result.engine)
         if isinstance(result, Transcript):
             result.speech_end = timing.get("speech_end")
             result.captured_at = timing.get("captured_at")

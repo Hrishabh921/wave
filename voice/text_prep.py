@@ -200,8 +200,27 @@ _ISO_DATE_RE = re.compile(r"\b(?P<y>(?:19|20)\d{2})-(?P<mo>0?[1-9]|1[0-2])-(?P<d
 _DMY_DATE_RE = re.compile(r"\b(?P<a>\d{1,2})[/.](?P<b>\d{1,2})[/.](?P<y>(?:19|20)?\d{2})\b")
 _ORDINAL_RE = re.compile(r"\b(?P<num>\d+)(?P<suf>st|nd|rd|th)\b", re.IGNORECASE)
 _YEAR_CONTEXT_RE = re.compile(r"\b(?P<w>in|since|from|till|until|of|year|by|before|after)\s+(?P<y>(?:19|20)\d{2})\b", re.IGNORECASE)
-_UNIT_RE = re.compile(r"(?P<num>" + _NUM + r")\s?(?P<unit>km|kms|kg|kgs|cm|mm|ml|gb|mb|kb|tb|mins?|hrs?|secs?)\b", re.IGNORECASE)
+_UNIT_RE = re.compile(r"(?P<num>" + _NUM + r")\s?(?P<unit>km/hr?|kmph|kph|m/s|mph|kwh|kw|mah|ghz|mhz|khz|hz|"
+                      r"mbps|gbps|kbps|fps|lbs|lb|mg|ft|km|kms|kg|kgs|cm|mm|ml|gb|mb|kb|tb|mins?|hrs?|secs?)\b",
+                      re.IGNORECASE)
 _PLAIN_NUM_RE = re.compile(r"(?<![\w.])(?P<neg>-)?(?P<num>" + _NUM + r")(?![\w])")
+# Tier 48: what the cloned voice (which gets every number as words) read
+# wrongly - a phone number as "nine billion eight hundred ...", "Python
+# 3.12.1" as "three point one two.1", "1/2 cup" as "one/two cup", "10-15
+# minutes" as "ten-fifteen", "5 pm" as "five pm".
+_PHONE_RE = re.compile(r"(?<![\w.+,])(?P<cc>\+\d{1,3}[\s-]?)?(?P<body>\d(?:[\s-]?\d){9,12})(?![\w.,])")
+_VERSION_RE = re.compile(r"(?<![\w.])(?P<v>[vV](?:ersion\s+)?)?(?P<a>\d{1,3})\.(?P<b>\d{1,3})(?:\.(?P<c>\d{1,4}))?"
+                         r"(?:\.(?P<d>\d{1,4}))?(?![\w.])")
+_HOUR_AMPM_RE = re.compile(r"\b(?P<h>1[0-2]|0?[1-9])\s?(?P<ap>[ap])\.?\s?m\b\.?", re.IGNORECASE)
+_FRACTION_RE = re.compile(r"(?<![\w./])(?P<f>1/2|1/3|2/3|1/4|3/4|24/7|50/50)(?![\w./])")
+_RANGE_RE = re.compile(
+    r"(?P<pre>\b(?:around|about|approx(?:imately)?|between|from|roughly|lagbhag|takriban)\s+)?"
+    r"(?<![\w.:/-])(?P<a>\d+(?:\.\d+)?)\s?[-–]\s?(?P<b>\d+(?:\.\d+)?)(?![\w.:/-])"
+    r"(?P<post>\s?(?:%|percent|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|times|people|"
+    r"km|kms|kg|kgs|rupees|lakh|crore|din|ghante|minute|saal|mahine|log)\b)?", re.IGNORECASE)
+_FRACTIONS = {"1/2": ("half", "आधा"), "1/3": ("one third", "एक तिहाई"), "2/3": ("two thirds", "दो तिहाई"),
+              "1/4": ("a quarter", "एक चौथाई"), "3/4": ("three quarters", "तीन चौथाई"),
+              "24/7": ("twenty-four seven", "चौबीसों घंटे"), "50/50": ("fifty-fifty", "आधा-आधा")}
 
 _MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
               "October", "November", "December"]
@@ -214,6 +233,16 @@ _UNITS = {
     "ml": ("millilitres", "मिलीलीटर"), "gb": ("gigabytes", "जीबी"), "mb": ("megabytes", "एमबी"),
     "kb": ("kilobytes", "केबी"), "tb": ("terabytes", "टीबी"), "min": ("minutes", "मिनट"), "mins": ("minutes", "मिनट"),
     "hr": ("hours", "घंटे"), "hrs": ("hours", "घंटे"), "sec": ("seconds", "सेकंड"), "secs": ("seconds", "सेकंड"),
+    # Tier 48
+    "km/h": ("kilometres per hour", "किलोमीटर प्रति घंटा"), "km/hr": ("kilometres per hour", "किलोमीटर प्रति घंटा"),
+    "kmph": ("kilometres per hour", "किलोमीटर प्रति घंटा"), "kph": ("kilometres per hour", "किलोमीटर प्रति घंटा"),
+    "m/s": ("metres per second", "मीटर प्रति सेकंड"), "mph": ("miles per hour", "मील प्रति घंटा"),
+    "kwh": ("kilowatt hours", "किलोवाट घंटे"), "kw": ("kilowatts", "किलोवाट"),
+    "mah": ("milliamp hours", "मिलीएम्पियर आवर"), "ghz": ("gigahertz", "गीगाहर्ट्ज़"), "mhz": ("megahertz", "मेगाहर्ट्ज़"),
+    "khz": ("kilohertz", "किलोहर्ट्ज़"), "hz": ("hertz", "हर्ट्ज़"), "mbps": ("megabits per second", "एमबीपीएस"),
+    "gbps": ("gigabits per second", "जीबीपीएस"), "kbps": ("kilobits per second", "केबीपीएस"),
+    "fps": ("frames per second", "फ़्रेम प्रति सेकंड"), "lbs": ("pounds", "पाउंड"), "lb": ("pounds", "पाउंड"),
+    "mg": ("milligrams", "मिलीग्राम"), "ft": ("feet", "फ़ीट"),
 }
 
 _ABBREVIATIONS_EN = [
@@ -309,8 +338,53 @@ def _time(m: re.Match, lang: str) -> str:
 
 
 def _time_words(m: re.Match, lang: str) -> str:
-    h, mi = int(m.group("h")), int(m.group("m"))
-    ap = (m.group("ap") or "").lower()
+    return _clock_words(int(m.group("h")), int(m.group("m")), (m.group("ap") or "").lower(), lang)
+
+
+def _digits(digits: str, lang: str) -> str:
+    return " ".join((_HI_0_99[int(d)] if lang == "hi" else _ONES[int(d)]) for d in digits)
+
+
+def _phone(m: re.Match, lang: str) -> str:
+    """Digit by digit, in the groups it was written in (or 5 + 5 for a
+    bare ten-digit mobile number), country code first."""
+    cc = re.sub(r"\D", "", m.group("cc") or "")
+    body = m.group("body")
+    groups = [g for g in re.split(r"[\s-]+", body) if g]
+    if len(groups) == 1:
+        g = groups[0]
+        sizes = {10: (5, 5), 11: (3, 4, 4), 12: (4, 4, 4), 13: (3, 5, 5)}.get(len(g), (len(g),))
+        groups, at = [], 0
+        for size in sizes:
+            groups.append(g[at:at + size])
+            at += size
+    words = ", ".join(_digits(g, lang) for g in groups)
+    return ((("प्लस " if lang == "hi" else "plus ") + _digits(cc, lang) + ", ") if cc else "") + words
+
+
+def _version(m: re.Match, lang: str) -> str:
+    a, b, c, d, v = m.group("a"), m.group("b"), m.group("c"), m.group("d"), m.group("v")
+    if c is None and not v:
+        return m.group(0)                       # "3.14" is a decimal number - the plain pass reads it
+    if not v and d is None and int(a) <= 31 and int(b) <= 12 and len(c) in (2, 4):
+        return m.group(0)                       # "25.11.2026" is a date
+    point = " दशमलव " if lang == "hi" else " point "
+    parts = [p for p in (a, b, c, d) if p is not None]
+    words = point.join(number_words(int(p), lang) for p in parts)
+    return (("वर्ज़न " if lang == "hi" else "version ") + words) if v else words
+
+
+def _range(m: re.Match, lang: str) -> str:
+    """"10-15 minutes" -> "10 to 15 minutes" - only with a unit after or
+    "around"/"between" before it: "India won 3-2" is a score."""
+    if not (m.group("pre") or m.group("post")):
+        return m.group(0)
+    between = (m.group("pre") or "").strip().lower() == "between"
+    joiner = " से " if lang == "hi" else (" and " if between else " to ")
+    return (m.group("pre") or "") + m.group("a") + joiner + m.group("b") + (m.group("post") or "")
+
+
+def _clock_words(h: int, mi: int, ap: str, lang: str) -> str:
     if lang == "hi":
         h24 = h
         if ap == "p" and h < 12:
@@ -361,6 +435,8 @@ def expand_numbers(text: str, lang: str = "en", mode: str = "all") -> str:
     text = _CURRENCY_RE.sub(
         lambda m: _currency(m, lang) if (not risky_only or (m.group("pre") or "").strip().rstrip(".").lower()
                                          in ("₹", "rs", "inr") or m.group("post")) else m.group(0), text)
+    # Tier 48: a phone number is read digit by digit by every voice.
+    text = _PHONE_RE.sub(lambda m: _phone(m, lang), text)
     if risky_only:
         # Only Indian-grouped plain numbers ("1,50,000") are a problem for a cloud voice.
         return _PLAIN_NUM_RE.sub(
@@ -380,8 +456,12 @@ def expand_numbers(text: str, lang: str = "en", mode: str = "all") -> str:
         return _date(day, month, y, lang)
 
     text = _ISO_DATE_RE.sub(iso, text)
+    text = _VERSION_RE.sub(lambda m: _version(m, lang), text)        # Tier 48, before "3.12.1" looks like a date
     text = _DMY_DATE_RE.sub(dmy, text)
     text = _TIME_RE.sub(lambda m: _time(m, lang), text)
+    text = _HOUR_AMPM_RE.sub(lambda m: _clock_words(int(m.group("h")), 0, m.group("ap").lower(), lang), text)
+    text = _FRACTION_RE.sub(lambda m: _FRACTIONS[m.group("f")][1 if lang == "hi" else 0], text)
+    text = _RANGE_RE.sub(lambda m: _range(m, lang), text)
     text = _PERCENT_RE.sub(lambda m: _number_phrase(m.group("num"), lang) + (" प्रतिशत" if lang == "hi" else " percent"), text)
     text = _TEMP_RE.sub(lambda m: (("माइनस " if lang == "hi" else "minus ") if m.group("num").startswith("-") else "")
                         + _number_phrase(m.group("num").lstrip("-"), lang)

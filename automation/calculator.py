@@ -200,6 +200,26 @@ def _convert_temperature(value, from_key, to_key):
     return f"{value}{_TEMP_LABEL[f]} = {_tidy_number(round(out, 2))}{_TEMP_LABEL[t]}"
 
 
+def convert_value(value: float, from_unit: str, to_unit: str):
+    """Tier 48 (brain/exact_answers.py): the converted number, or None when
+    a unit isn't known or the two aren't the same kind."""
+    f, t = _normalize_unit(from_unit), _normalize_unit(to_unit)
+    tf, tt = _TEMP_UNITS.get(f), _TEMP_UNITS.get(t)
+    if tf and tt:
+        celsius = value if tf == "c" else (value - 32) * 5.0 / 9.0 if tf == "f" else value - 273.15
+        return celsius if tt == "c" else celsius * 9.0 / 5.0 + 32 if tt == "f" else celsius + 273.15
+    cat_from, table_from = _find_category(f)
+    cat_to, table_to = _find_category(t)
+    if cat_from is None or cat_from != cat_to:
+        return None
+    return value * table_from[f] / table_to[t]
+
+
+def unit_names() -> list:
+    """Every unit word convert_value() knows."""
+    return sorted({u for table in _CATEGORIES.values() for u in table} | set(_TEMP_UNITS), key=len, reverse=True)
+
+
 def convert_units(value: float, from_unit: str, to_unit: str) -> str:
     from_key, to_key = _normalize_unit(from_unit), _normalize_unit(to_unit)
     try:
