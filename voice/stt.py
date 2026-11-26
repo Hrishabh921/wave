@@ -513,6 +513,7 @@ class SpeechReceiver:
             if self._capture.start():
                 logger.info("Continuous mic stream started (Tier 12 capture pipeline)")
                 self._start_caption_thread()
+                self._start_system_reference()
                 return self._capture
             logger.warning(f"Continuous mic stream unavailable ({self._capture.last_error}) - "
                            "using speech_recognition's listen() instead")
@@ -521,9 +522,24 @@ class SpeechReceiver:
         self._capture_failed_at = now
         return None
 
+    def _start_system_reference(self):
+        """Tier 49: what the PC plays (YouTube, Spotify) becomes the echo
+        canceller's reference too (voice/system_reference.py) - for the
+        continuous stream only, whose frames the canceller sees live."""
+        try:
+            if getattr(self, "_system_reference", None) is None:
+                from voice.system_reference import SystemAudioReference  # noqa: PLC0415
+                self._system_reference = SystemAudioReference(
+                    aec_processor, hint=getattr(config, "AEC_LOOPBACK_DEVICE", ""))
+            self._system_reference.start()
+        except Exception as e:
+            logger.debug(f"System-audio echo reference didn't start: {e}")
+
     def close(self):
         """Releases the microphone (the mic worker calls this when it stops)."""
         self._captions_stop.set()
+        if getattr(self, "_system_reference", None) is not None:
+            self._system_reference.stop()
         if self._capture is not None:
             try:
                 self._capture.stop()

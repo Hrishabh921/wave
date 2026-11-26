@@ -2,6 +2,15 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 49 — What the PC plays is cancelled from the mic too, and the tests stop listening (2026-11-26)
+
+The echo canceller (`voice/aec.py`) only knew Wave's own voice - the samples it plays. With YouTube, Spotify or a call playing, the mic heard that too and Whisper wrote it down (lyrics, a video's dialogue) along with, or instead of, what the user said. SARA feeds the final mix going to the speakers - Windows' WASAPI loopback - to its canceller as the reference (it measured 4 dB of echo removed without it, 26 dB with it). Now Wave does too:
+- `voice/system_reference.py`: a background thread reads the loopback of the speakers in use - the physical device when the default one is a virtual "enhancer" (FxSound, Voicemeeter: its loopback is what the speakers really get), or `AEC_LOOPBACK_DEVICE` by name - at 16 kHz, 30 ms at a time, started with the continuous mic stream, retrying with backoff if the device goes away.
+- `aec_processor.feed_external_reference()` uses it only while Wave is quiet (while Wave talks the mix carries Wave's voice too, and its own samples already are the reference); meanwhile Wave's silent playback blocks aren't fed (they'd be a second timeline beside the PC's sound), and the live mic frames run 80 ms behind - the loopback copy arrives ~25 ms after the echo does, and the canceller needs the reference first (SARA's finding). A whole captured utterance (the legacy path) is never shifted; with nothing playing, everything is exactly as before.
+- Needs `soundcard` (now in requirements.txt; not yet installed on the owner's PC) - without it, or with no loopback device, nothing changes. `AEC_SYSTEM_REFERENCE=false` turns it off, as `tests/_phase4_support.py` does.
+
+**The test suite no longer listens to the room.** Found while checking a changed test result: with the default capture engine, `SpeechReceiver.listen()` in the STT tests started the continuous stream on the developer's REAL microphone and transcribed what was said nearby - 25 streams across six test files, one transcript "Kareed lawai" - so those tests, written against a mocked recognizer, failed or passed by what the room said. `tests/_phase4_support.py` now sets `CAPTURE_ENGINE=legacy` (the stream's own tests use a fake sounddevice and set it themselves): in those six files 18 failures + 1 error became the 2 known order-dependent ones, in half the time. 7 new tests in `tests/test_tier49_system_reference.py`.
+
 ## Tier 48 — Numbers said right, conversions worked out, and Wave's own voice not taken for the user's (2026-11-25)
 
 Three of SARA's smaller voice-side wins:

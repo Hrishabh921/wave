@@ -239,7 +239,7 @@ class CaptureEngine:
     def _process_frame(self, frame: bytes, t_end: float):
         if self._aec is not None and getattr(self._aec, "enabled", False):
             try:
-                cleaned = self._aec.process_near_end(frame)
+                cleaned = self._aec.process_near_end(frame, live=True)   # Tier 49: may run delayed
                 if cleaned and len(cleaned) == len(frame):
                     frame = cleaned
             except Exception:

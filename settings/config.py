@@ -501,6 +501,12 @@ class Config:
     # Tier 48: a transcript of Wave's own sentence, heard back while it was
     # talking (what the echo canceller missed), is dropped (voice/echo_guard.py).
     ECHO_GUARD = os.getenv("ECHO_GUARD", "true").strip().lower() not in ("false", "0", "no")
+    # Tier 49: what the PC plays (YouTube, Spotify, a call) as the echo
+    # canceller's reference too, read from the speakers' WASAPI loopback
+    # (voice/system_reference.py; needs `pip install soundcard`).
+    # AEC_LOOPBACK_DEVICE: part of the output device's name, to pick one.
+    AEC_SYSTEM_REFERENCE = os.getenv("AEC_SYSTEM_REFERENCE", "true").strip().lower() not in ("false", "0", "no")
+    AEC_LOOPBACK_DEVICE = os.getenv("AEC_LOOPBACK_DEVICE", "").strip()
     # Tier 31: both launchers opt Wave's process out of Windows 11's power
     # throttling (EcoQoS), which otherwise made the voice maths (cloned
     # voice, Whisper) ~15x slower a second into any sustained work while

@@ -17,6 +17,18 @@ _TEST_DATA = tempfile.mkdtemp(prefix="wave_tests_")
 os.environ.setdefault("TTFA_LOG_PATH", os.path.join(_TEST_DATA, "ttfa.jsonl"))
 atexit.register(shutil.rmtree, _TEST_DATA, ignore_errors=True)
 
+# Tests never open the real microphone. With the default capture engine,
+# SpeechReceiver.listen() started the continuous stream (voice/capture.py) on
+# the developer's real mic, transcribed whatever the room said - 25 streams
+# in six STT test files, one transcript "Kareed lawai" - and its tests,
+# written against the mocked recognizer, failed or passed by what was
+# heard. The legacy path uses the recognizer the tests mock; tests of the
+# stream itself build CaptureEngine on a fake sounddevice and set
+# CAPTURE_ENGINE themselves.
+os.environ.setdefault("CAPTURE_ENGINE", "legacy")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.CAPTURE_ENGINE = "legacy"
+
 # Tier 32: the speaker check must never judge test audio against the
 # developer's own voiceprint (avatar_rig/voiceprint.npz, a real person's
 # voice training). tests/test_tier32_speaker_id.py turns it back on with its
@@ -70,8 +82,9 @@ if "settings.config" in sys.modules:
 # tests/test_tier46_memory.py switches them on itself.
 # Tier 47: and never search the real web or read the real foreground window.
 # Tier 48: and never drop a scripted transcript as an echo of a test's speech.
+# Tier 49: and never read what the developer's speakers are playing.
 for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE",
-              "ECHO_GUARD"):
+              "ECHO_GUARD", "AEC_SYSTEM_REFERENCE"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)

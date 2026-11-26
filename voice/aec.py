@@ -72,6 +72,7 @@ real name can be read off directly and added to the candidate list.
 
 from __future__ import annotations
 
+import collections
 import logging
 import threading
 import time
@@ -123,6 +124,19 @@ _ERROR_LOG_RATE_LIMIT_S = 60.0
 # of bytes (e.g. downstream stalls), drop the backlog instead of growing
 # memory unboundedly.
 _BUF_MAX_FRAMES = 50
+
+# Tier 49: the PC's own sound as a second reference (voice/system_reference.py).
+EXT_MIN_RMS = 25.0        # quieter than this, a loopback block is silence
+EXT_HOLD_S = 1.0          # the PC counts as playing this long after its last sound
+TTS_HOLD_S = 0.4          # Wave counts as talking this long after its last loud block
+MIC_DELAY_FRAMES = 8      # 80 ms: the loopback copy arrives ~25 ms AFTER the echo does
+
+
+def _rms(pcm_i16) -> float:
+    if not HAS_NUMPY or pcm_i16 is None or len(pcm_i16) == 0:
+        return 0.0
+    x = np.asarray(pcm_i16, dtype=np.float32)
+    return float(np.sqrt(np.mean(x * x)))
 
 
 def resample_linear(pcm_i16, src_rate: int, dst_rate: int):
@@ -180,6 +194,15 @@ class AECProcessor:
         self._near_lock = threading.Lock()
         self._far_buf = bytearray()
         self._far_lock = threading.Lock()
+
+        # Tier 49: the PC's own sound as the reference while Wave is quiet,
+        # and the live mic delayed meanwhile so that reference comes first.
+        self._ext_buf = bytearray()
+        self._ext_sound_at = -1e9
+        self._tts_voice_at = -1e9
+        self._mic_delay = collections.deque()
+        self._mic_delay_on = False
+        self.delay_engagements = 0
 
         self._closed = False
         self._close_lock = threading.Lock()
@@ -280,6 +303,15 @@ class AECProcessor:
         try:
             if source_sample_rate != self.sample_rate:
                 pcm_i16 = resample_linear(pcm_i16, source_sample_rate, self.sample_rate)
+            # Tier 49: Wave's playback keeps feeding silence between
+            # sentences; while the PC plays something else, that silence
+            # would be a second timeline next to the PC's sound - so only
+            # Wave actually talking is fed then.
+            now = time.monotonic()
+            if _rms(pcm_i16) >= EXT_MIN_RMS:
+                self._tts_voice_at = now
+            elif self._pc_playing(now):
+                return
             pcm_bytes = pcm_i16.astype(np.int16, copy=False).tobytes()
 
             with self._far_lock:
@@ -300,13 +332,64 @@ class AECProcessor:
                     f"for {_ERROR_LOG_RATE_LIMIT_S:.0f}s): {e}"
                 )
 
+    def _pc_playing(self, now: float) -> bool:
+        return now - self._ext_sound_at < EXT_HOLD_S
+
+    def feed_external_reference(self, pcm_i16, source_sample_rate: int = 16000) -> None:
+        """Tier 49: a block of the final mix going to the speakers (WASAPI
+        loopback, voice/system_reference.py) - YouTube, Spotify, a call.
+        Used as the reference only while Wave itself is quiet (the mix then
+        carries Wave's voice too, and Wave's own samples already are the
+        reference). Must stay fast and never raise."""
+        if (not self.enabled or self._ap is None or self._reverse_method_name is None
+                or pcm_i16 is None or len(pcm_i16) == 0):
+            return
+        try:
+            if source_sample_rate != self.sample_rate:
+                pcm_i16 = resample_linear(pcm_i16, source_sample_rate, self.sample_rate)
+            now = time.monotonic()
+            if _rms(pcm_i16) >= EXT_MIN_RMS:
+                self._ext_sound_at = now
+            if now - self._tts_voice_at <= TTS_HOLD_S or not self._pc_playing(now):
+                return
+            with self._far_lock:
+                self._ext_buf.extend(np.asarray(pcm_i16, dtype=np.int16).tobytes())
+                method = getattr(self._ap, self._reverse_method_name)
+                while len(self._ext_buf) >= self._frame_bytes:
+                    frame = bytes(self._ext_buf[: self._frame_bytes])
+                    del self._ext_buf[: self._frame_bytes]
+                    method(frame)
+        except Exception as e:
+            if self._should_log_now("far_end"):
+                logger.warning(f"feed_external_reference error (further identical errors suppressed "
+                               f"for {_ERROR_LOG_RATE_LIMIT_S:.0f}s): {e}")
+
+    def _delay_live_frame(self, frame: bytes) -> bytes:
+        """Tier 49: while the PC plays, the live mic runs MIC_DELAY_FRAMES
+        behind (silence first, once), so the loopback reference - which
+        reaches us after the echo does - is in the canceller first."""
+        on = self._pc_playing(time.monotonic())
+        if on and not self._mic_delay_on:
+            self._mic_delay.clear()
+            self._mic_delay.extend([b"\x00" * self._frame_bytes] * MIC_DELAY_FRAMES)
+            self.delay_engagements += 1
+        elif not on and self._mic_delay_on:
+            self._mic_delay.clear()
+        self._mic_delay_on = on
+        if not on:
+            return frame
+        self._mic_delay.append(frame)
+        return self._mic_delay.popleft()
+
     # ── Near-end (microphone / forward stream) ──────────────────────────
 
-    def process_near_end(self, pcm_bytes: bytes) -> bytes:
+    def process_near_end(self, pcm_bytes: bytes, live: bool = False) -> bytes:
         """Run raw mic audio through AEC + NS. Returns echo-cancelled
         audio. On any failure this returns the ORIGINAL audio unmodified
         (fail-safe passthrough) so a transient error never silences the
-        mic entirely."""
+        mic entirely. live=True: frames of the continuous stream
+        (voice/capture.py), which run through the Tier 49 delay line while
+        the PC plays; a whole captured utterance (the legacy path) never does."""
         if not self.enabled or self._ap is None or not pcm_bytes:
             return pcm_bytes
 
@@ -338,6 +421,8 @@ class AECProcessor:
                 while len(self._near_buf) >= self._frame_bytes:
                     frame = bytes(self._near_buf[: self._frame_bytes])
                     del self._near_buf[: self._frame_bytes]
+                    if live:
+                        frame = self._delay_live_frame(frame)
                     try:
                         processed = self._ap.process_stream(frame)
                         out.extend(processed if processed else frame)
