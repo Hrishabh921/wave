@@ -150,7 +150,7 @@ def _looks_like_name(value: str) -> bool:
 def people(facts) -> dict:
     """{name_slug: {"name": str, "relations": set, "facts": [(key, value)]}} from
     remembered (key, value) pairs."""
-    found = {}
+    found: dict = {}
 
     def person(name):
         slug = name.strip().split()[0].lower()

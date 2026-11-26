@@ -21,6 +21,7 @@ forget. MEMORY_EPISODIC=false turns it off.
 """
 import re
 from datetime import date, datetime, timedelta
+from typing import Optional
 
 from brain import memory_time
 from settings.config import config
@@ -57,7 +58,7 @@ def is_recall_question(text: str) -> bool:
     return bool(_PAST_QUESTION.search(text or ""))
 
 
-def window(text: str, today: date = None):
+def window(text: str, today: Optional[date] = None):
     """(the words, first day, last day) of the past time `text` names, or None."""
     today = today or date.today()
     text = text or ""
@@ -102,7 +103,7 @@ def _stamp(when: str) -> str:
         return str(when or "")
 
 
-def recall(text: str, today: date = None, store=None):
+def recall(text: str, today: Optional[date] = None, store=None):
     """(what it covers, [lines]) for a question about the past, else None."""
     if not _enabled() or not is_recall_question(text):
         return None
@@ -139,7 +140,7 @@ def recall(text: str, today: date = None, store=None):
     return label, lines[-MAX_LINES:] if span is not None else lines[:MAX_LINES]
 
 
-def section(text: str, user_name: str, today: date = None) -> str:
+def section(text: str, user_name: str, today: Optional[date] = None) -> str:
     """The prompt lines for a question about the past - or ""."""
     try:
         found = recall(text, today)

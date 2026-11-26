@@ -333,7 +333,7 @@ class SemanticIntents:
         if vec is None:
             return []
         q = _unit(vec)
-        best = {}
+        best: dict = {}
         for family, v in self._table:
             s = float(q @ v)
             if s > best.get(family, -1.0):

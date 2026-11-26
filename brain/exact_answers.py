@@ -15,6 +15,7 @@ the convert_units tool's own tables (automation/calculator.py).
 """
 import re
 from datetime import date, timedelta
+from typing import Optional
 
 _MONTHS = {
     "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3, "april": 4, "apr": 4, "may": 5,
@@ -62,7 +63,7 @@ def _date_from(groups: dict, today: date, prefix: str = "", future: bool = True)
         month, day = _FIXED_DAYS[g["fixed"].lower()]
     else:
         day = int(g.get("d1") or g.get("d2") or 0)
-        month = _MONTHS.get((g.get("m1") or g.get("m2") or "").lower())
+        month = _MONTHS.get((g.get("m1") or g.get("m2") or "").lower(), 0)
     if not month or not day:
         return None
     year = int(g["y"]) if g.get("y") else today.year
@@ -91,7 +92,7 @@ def _fmt(d: date) -> str:
     return f"{d.strftime('%A')}, {d.day} {d.strftime('%B')} {d.year}"
 
 
-def answer(text: str, today: date = None):
+def answer(text: str, today: Optional[date] = None):
     """A one-line spoken answer, or None when this isn't one of these."""
     today = today or date.today()
     text = (text or "").strip()

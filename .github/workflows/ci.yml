@@ -161,3 +161,30 @@ jobs:
       - name: Run mypy
         shell: bash
         run: mypy automation/ brain/ database/ monitoring/ settings/ ui/ vision/ voice/ web/ --ignore-missing-imports
+
+  typed-core:
+    name: Type check (typed core, blocking)
+    # Tier 51: the files listed in mypy.ini are type-clean and must stay that
+    # way - unlike the advisory run above, a new error here fails the build.
+    # mypy.ini sets platform = win32, so this Linux runner checks the code as
+    # the Windows app it is; --ignore-missing-imports (also in mypy.ini) means
+    # the Windows-only dependencies never need installing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install mypy
+        run: |
+          python -m pip install --upgrade pip
+          pip install mypy==2.4.1
+
+      - name: Run mypy on the typed core (mypy.ini)
+        run: python -m mypy

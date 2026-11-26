@@ -73,9 +73,9 @@ devil's advocate") without being commands at all.
 """
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-RouteResult = Optional[Tuple[str, Dict[str, str]]]
+RouteResult = Optional[Tuple[str, Dict[str, Any]]]
 _Matcher = Callable[[str], RouteResult]
 
 

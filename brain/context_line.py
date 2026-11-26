@@ -37,7 +37,7 @@ _FRIENDLY = {
     "pycharm64": "PyCharm", "idea64": "IntelliJ IDEA", "devenv": "Visual Studio", "figma": "Figma",
 }
 _lock = threading.Lock()
-_cache = {"at": -1e9, "text": ""}
+_cache: dict = {"at": -1e9, "text": ""}
 
 
 def _enabled() -> bool:

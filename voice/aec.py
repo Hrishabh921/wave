@@ -182,7 +182,7 @@ class AECProcessor:
     ) -> None:
         self.enabled = bool(getattr(config, "AEC_ENABLED", True)) and HAS_AEC_LIB and HAS_NUMPY
 
-        self.sample_rate = int(sample_rate or getattr(config, "AEC_SAMPLE_RATE", 16000))
+        self.sample_rate = int(sample_rate if sample_rate else getattr(config, "AEC_SAMPLE_RATE", 16000))
         self.channels = channels
         self._frame_samples = max(1, int(self.sample_rate * 0.01))  # 10ms, per WebRTC APM
         self._frame_bytes = self._frame_samples * _BYTES_PER_SAMPLE * self.channels
@@ -200,7 +200,7 @@ class AECProcessor:
         self._ext_buf = bytearray()
         self._ext_sound_at = -1e9
         self._tts_voice_at = -1e9
-        self._mic_delay = collections.deque()
+        self._mic_delay: "collections.deque[bytes]" = collections.deque()
         self._mic_delay_on = False
         self.delay_engagements = 0
 

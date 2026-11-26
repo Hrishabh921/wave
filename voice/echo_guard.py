@@ -23,6 +23,7 @@ import re
 import threading
 import time
 from collections import deque
+from typing import Optional
 
 from settings.config import config
 
@@ -80,7 +81,8 @@ class EchoGuard:
         if token is not None and token[1] is None:
             token[1] = self._clock()
 
-    def is_echo(self, text: str, heard_from: float = None, heard_to: float = None, confidence: float = None) -> bool:
+    def is_echo(self, text: str, heard_from: Optional[float] = None, heard_to: Optional[float] = None,
+                confidence: Optional[float] = None) -> bool:
         """True when `text`, whose audio ran from heard_from to heard_to
         (time.monotonic(); unknown = just now), is one of Wave's own sentences."""
         if not _enabled():

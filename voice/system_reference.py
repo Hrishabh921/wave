@@ -22,6 +22,7 @@ off; AEC_LOOPBACK_DEVICE picks a device by part of its name.
 """
 import logging
 import threading
+from typing import Optional
 
 from settings.config import config
 
@@ -68,7 +69,7 @@ class SystemAudioReference:
         self._hint = hint
         self._loader = loader
         self._stop = threading.Event()
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         self.device_name = ""
         self.blocks = 0
         self.last_error = ""
