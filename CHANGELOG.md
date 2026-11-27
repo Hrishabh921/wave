@@ -2,6 +2,15 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 53 — Dodo fills the page with the whole photo (2026-11-27)
+
+After the owner swapped in a new photo, Dodo sat small in the middle of her page, drawn from a crop of it; they asked for the photo across the whole window, with nothing cut off. Now:
+- the avatar (the 5-frame rig and the lifelike clips) is built from the full photo, not a crop;
+- `js/avatar.js` sizes the frame to the largest rectangle of the photo's own shape that fits the page, again whenever the window changes size (a `ResizeObserver`): full width or full height, never cropped or stretched - the page's padding shrank to match;
+- the Idle / Listening / Thinking / Speaking line floats on the photo's bottom edge (CSS anchor positioning, which WebView2 has) instead of taking a row of its own, lifted above the render-progress strip while one shows;
+- `avatar/live_render.py` stores the lifelike frames at full size (`--scale` default 1.0, was 0.75) - at 3/4 the bigger photo would be an upscaled, soft one. Re-rendering a full 1280x720 photo took 260 s on the RTX 3050.
+Checked with the real page in a headless Edge and a fake bridge (no Wave running, no sound): at five window sizes, wide and narrow, the photo kept its exact 16:9 shape and filled the width or the height; the animated face region shows no seam against the photo around it. 5 new tests in `tests/test_tier53_dodo_fills_the_page.py`.
+
 ## Tier 52 — The test suite stays silent: no real volume, no real voice, no real keys (2026-11-26)
 
 The owner noticed that whenever work was being done on Wave the laptop got louder and spoke: after a day of full test runs the master volume stood at 100%, and the PC said "hello" in the old Windows voice and "hello world" in Wave's. Three tests touched the real machine:

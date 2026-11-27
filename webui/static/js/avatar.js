@@ -138,10 +138,32 @@ window.WaveAvatar = (function () {
         frameEl = document.createElement("div");
         frameEl.className = "avatar-frame";
         // The frame's own aspect ratio always matches the photo, and what's
-        // inside fills it without stretching - the whole face always shows.
+        // inside fills it without stretching - the whole photo always shows.
         frameEl.style.aspectRatio = String(aspect || 1);
         panelEl.appendChild(frameEl);
         mountEl.appendChild(panelEl);
+        fitFrame(mountEl, aspect || 1);
+    }
+
+    // The photo fills the page - as big as the window allows, never cropped
+    // or stretched (the owner asked for it full-window, 2026-11-27): the
+    // frame is sized to the largest rectangle of the photo's shape that fits
+    // the mount, again whenever the window changes size.
+    let fitObserver = null;
+    function fitFrame(mountEl, aspect) {
+        if (fitObserver) fitObserver.disconnect();
+        const fit = () => {
+            if (!frameEl) return;
+            const w = mountEl.clientWidth, h = mountEl.clientHeight;
+            if (!w || !h) return;
+            let fw = w, fh = w / aspect;
+            if (fh > h) { fh = h; fw = h * aspect; }
+            frameEl.style.width = Math.floor(fw) + "px";
+            frameEl.style.height = Math.floor(fh) + "px";
+        };
+        fitObserver = new ResizeObserver(fit);
+        fitObserver.observe(mountEl);
+        fit();
     }
 
     // ================================================== Tier 27: lifelike
@@ -418,6 +440,7 @@ window.WaveAvatar = (function () {
         clearInterval(timer);
         if (live) live.destroy();
         live = null;
+        if (fitObserver) { fitObserver.disconnect(); fitObserver = null; }
         mountRef.innerHTML = "";
         built = false; panelEl = null; frameEl = null; imgEl = null; progressEl = null;
         frames = null; lastFrameShown = null;

@@ -441,17 +441,30 @@ button, input, textarea, select { font-family: inherit; }
 
 /* Dodo page (web only): Wave's character, the Tier 25b avatar - moved out
    of the chat panel onto its own page, just above Chat in the sidebar */
-.dodo-wrap { padding: 20px; height: 100%; display: flex; flex-direction: column; gap: 14px; }
-.dodo-stage { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px 26px; overflow: hidden; }
+/* The photo fills the page (2026-11-27): little padding around it, the
+   frame sized by js/avatar.js to the largest uncropped fit, and the state
+   line floating over the photo instead of taking a row of its own. */
+.dodo-wrap { padding: 12px 16px 16px; height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.dodo-stage { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 8px; overflow: hidden; }
 .dodo-mount { flex: 1 1 0; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
-#avatar-panel { height: 100%; max-width: 100%; display: flex; align-items: center; justify-content: center; }
-.avatar-frame { position: relative; height: 100%; max-width: 100%; border-radius: 18px; overflow: hidden; background: var(--bg-surface2); border: 1px solid var(--border); transition: border-color 400ms, box-shadow 400ms; }
+#avatar-panel { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.avatar-frame { position: relative; max-width: 100%; max-height: 100%; border-radius: 18px; overflow: hidden; background: var(--bg-surface2); border: 1px solid var(--border); transition: border-color 400ms, box-shadow 400ms; anchor-name: --dodo-frame; }
 .avatar-canvas { width: 100%; height: 100%; display: block; }
 .avatar-live-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 9px 12px; background: rgba(0, 0, 0, 0.6); color: #FFFFFF; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-align: center; }
 .avatar-panel.prominent .avatar-frame { border-color: var(--accent-1); box-shadow: 0 0 28px color-mix(in srgb, var(--accent-1) 35%, transparent); }
 .avatar-img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .avatar-placeholder { color: var(--text-muted); font-size: 13px; line-height: 1.5; text-align: center; max-width: 420px; }
-.dodo-state { flex: none; font-size: 11px; font-weight: 700; letter-spacing: 2px; white-space: pre; text-transform: uppercase; }
+.dodo-state { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 2; padding: 5px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); font-size: 11px; font-weight: 700; letter-spacing: 2px; white-space: pre; text-transform: uppercase; pointer-events: none; }
+/* Pinned to the photo's own bottom edge, also when a narrow window leaves
+   room below it (CSS anchor positioning - WebView2 has it; without it the
+   line stays at the stage's bottom, which is the photo's bottom whenever
+   the window is wider than the photo) - and lifted above the render
+   progress strip while one shows. */
+.dodo-stage:has(.avatar-live-progress:not(.hidden)) .dodo-state { bottom: 54px; }
+@supports (anchor-name: --a) {
+    .dodo-state { position-anchor: --dodo-frame; left: anchor(center); bottom: calc(anchor(bottom) + 14px); }
+    .dodo-stage:has(.avatar-live-progress:not(.hidden)) .dodo-state { bottom: calc(anchor(bottom) + 46px); }
+}
 .dodo-stage:not(:has(#avatar-panel)) .dodo-state { display: none; }
 .avatar-panel[data-avatar-state="speaking"] .avatar-frame { border-color: var(--accent-1); }
 .avatar-panel[data-avatar-state="thinking"] .avatar-frame { border-color: var(--warning); }

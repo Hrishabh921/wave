@@ -162,9 +162,10 @@ def main(argv=None):
     ap.add_argument("--photo", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--quality", type=int, default=88)
-    # The Dodo page shows the photo at about 2/3 of its size, so frames are
-    # stored at 3/4 - sharp on screen, a lot less to decode every frame.
-    ap.add_argument("--scale", type=float, default=0.75)
+    # The Dodo page fills the window with the photo (2026-11-27: the owner
+    # asked for it full-size, uncropped), so frames are stored at full size -
+    # at the old 3/4 they'd be upscaled on a 1080p screen and look soft.
+    ap.add_argument("--scale", type=float, default=1.0)
     a = ap.parse_args(argv)
     plan = _load_plan()
     started = time.time()
