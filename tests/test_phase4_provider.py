@@ -316,12 +316,26 @@ class ClientTests(unittest.TestCase):
         s.close()                                   # nothing is listening there now
         dead = OpenAICompatClient(ProviderConfig(name="ollama", base_url=f"http://127.0.0.1:{port}/v1", model="m",
                                                  timeout=2, max_retries=5, needs_key=False))
-        t0 = time.time()
-        with self.assertRaises(LLMError) as cm:
-            dead.chat.completions.create(messages=[{"role": "user", "content": "x"}])
+        # Count the attempts and the waits instead of timing the whole thing:
+        # Windows itself takes ~2 s to refuse a connection to a closed local
+        # port (Linux refuses at once), so "under 4 s" failed there with the
+        # retry logic working exactly right.
+        import requests
+        from unittest import mock
+        attempts, waits = [], []
+        real_post = requests.Session.post
+
+        def counting_post(session, *a, **k):
+            attempts.append(a[0] if a else k.get("url"))
+            return real_post(session, *a, **k)
+        with mock.patch.object(requests.Session, "post", counting_post), \
+                mock.patch.object(lp.time, "sleep", waits.append):
+            with self.assertRaises(LLMError) as cm:
+                dead.chat.completions.create(messages=[{"role": "user", "content": "x"}])
         self.assertEqual(cm.exception.kind, "connection")
         self.assertIn("Is the Ollama app running?", str(cm.exception))
-        self.assertLess(time.time() - t0, 4)        # one 0.8s retry, not five
+        self.assertEqual(len(attempts), 2)          # one try + one retry, not 1 + max_retries (5)
+        self.assertEqual(waits, [0.8])              # one 0.8 s pause between them
 
     def test_non_json_success_body(self):
         self.srv.script = [Reply(200, "<html>captive portal</html>")]

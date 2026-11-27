@@ -92,8 +92,14 @@ if "settings.config" in sys.modules:
 # test_phase6_proactive fired was a request to api.groq.com (see the guard
 # below). test_tier18_proactive_triggers.py and test_tier3_reminders.py
 # switch them on with a fake client.
+# And never index the developer's real Desktop/Documents/Downloads: with notes
+# search on, GroqBrain's background start reads and embeds every file there.
+# The owner's .env happens to switch it off, which also made the notes tests
+# (test_phase6_notes_rag, test_tier20_policy_matrix) fail on their PC - so it's
+# off for every machine now, and those tests switch it on with a temp folder.
 for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE",
-              "ECHO_GUARD", "AEC_SYSTEM_REFERENCE", "PROACTIVE_LLM_REWORD_ENABLED", "CONTEXTUAL_REMINDER_LLM"):
+              "ECHO_GUARD", "AEC_SYSTEM_REFERENCE", "PROACTIVE_LLM_REWORD_ENABLED", "CONTEXTUAL_REMINDER_LLM",
+              "NOTES_RAG_ENABLED"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)

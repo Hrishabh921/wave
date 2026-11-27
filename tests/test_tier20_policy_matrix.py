@@ -161,6 +161,9 @@ class NotesRagFilteringTests(unittest.TestCase):
         config.NOTES_DIR = self.notes_dir
         self.patcher = mock.patch.object(nr, "_search_dirs", return_value=[self.notes_dir])
         self.patcher.start()
+        # Off for the whole run (tests/_phase4_support.py); on here, over the temp dir only.
+        self.old_enabled = config.NOTES_RAG_ENABLED
+        config.NOTES_RAG_ENABLED = True
         self.index = nr.NotesIndex()
         security_log.clear()
 
@@ -168,6 +171,7 @@ class NotesRagFilteringTests(unittest.TestCase):
         self.patcher.stop()
         self.db.db_path = self.old_db_path
         config.NOTES_DIR = self.old_notes_dir
+        config.NOTES_RAG_ENABLED = self.old_enabled
         security_log.clear()
 
     def _write(self, name, content):

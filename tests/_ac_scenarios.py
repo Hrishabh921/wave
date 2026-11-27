@@ -37,9 +37,31 @@ class Recorder:
         self.log.append(entry)
 
 
+class _EmptyRegistry:
+    """winreg with nothing in it. What's installed is the scenario's which_map
+    alone - as on the Linux CI, which has no winreg. On a real Windows PC the
+    backend read the real registry: Brave's "App Paths" entry on the owner's
+    laptop made "browser missing" open the real brave.exe and "browser found"
+    use it instead of the scenario's C:/fake/brave.exe."""
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE = "HKCU", "HKLM"
+
+    @staticmethod
+    def OpenKey(*a, **k):
+        raise FileNotFoundError("the test registry is empty")
+
+    @staticmethod
+    def EnumKey(*a, **k):
+        raise OSError("the test registry is empty")
+
+    @staticmethod
+    def QueryValueEx(*a, **k):
+        raise FileNotFoundError("the test registry is empty")
+
+
 @contextlib.contextmanager
 def instrumented(rec: Recorder, which_map=None, procs=None, press_raises=False):
     import pyautogui
+    from automation.backends import windows as windows_mod
     which_map = which_map or {}
     real_strftime = time.strftime
 
@@ -65,6 +87,10 @@ def instrumented(rec: Recorder, which_map=None, procs=None, press_raises=False):
         mock.patch.object(psutil, "process_iter", lambda attrs=None: list(procs or [])),
         mock.patch.object(psutil, "Process",
                           lambda pid: mock.MagicMock(terminate=lambda: rec.add("terminate", pid))),
+        # nothing installed but what which_map says: an empty registry, and no
+        # WhatsApp Desktop under %LOCALAPPDATA% (a folder that doesn't exist)
+        mock.patch.multiple(windows_mod, winreg=_EmptyRegistry, HAS_WINREG=True, create=True),
+        mock.patch.dict(os.environ, {"LOCALAPPDATA": os.path.join(S._TEST_DATA, "no-local-appdata")}),
     ]
     with contextlib.ExitStack() as stack:
         for p in patches:
@@ -141,10 +167,15 @@ def run_all(controller, patch_focus, data_dir, whatsapp_flows=True):
 
 
 def normalise(results, roots):
-    """Make logs comparable across checkouts: swap project roots for <ROOT>, drop the new undo hint."""
+    """Make logs comparable across checkouts: swap project roots for <ROOT>, drop the new undo hint,
+    and write paths under <ROOT> with "/" - the golden log was captured where os.path.join uses "/",
+    so on Windows `explorer "<ROOT>\\screenshots\\..."` never matched."""
     import json
+    import re
     text = json.dumps(results, default=str, sort_keys=True)
     for r in roots:
         text = text.replace(json.dumps(r)[1:-1], "<ROOT>")
+    # in the JSON text one backslash is written as two: <ROOT>\\a\\b -> <ROOT>/a/b
+    text = re.sub(r'<ROOT>((?:\\\\[^"\\]+)+)', lambda m: "<ROOT>" + m.group(1).replace("\\\\", "/"), text)
     text = text.replace(' (Say \\"undo\\" to bring it back.)', "")
     return json.loads(text)

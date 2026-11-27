@@ -636,7 +636,10 @@ class WindowsWindowManagementTests(unittest.TestCase):
             self.assertEqual(WindowsBackend().list_open_windows(), ["Notepad"])
 
     def test_list_open_windows_without_pywin32_is_not_supported(self):
-        with self.assertRaises(NotSupported):
+        # Really without it: where pywin32 IS installed (the owner's PC) this
+        # used to list the developer's real open windows instead.
+        from automation.backends import windows as windows_mod
+        with mock.patch.object(windows_mod, "HAS_WIN32GUI", False), self.assertRaises(NotSupported):
             WindowsBackend().list_open_windows()
 
     def test_focus_window_restores_if_minimized_then_raises_it(self):

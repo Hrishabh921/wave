@@ -13,7 +13,7 @@ from automation.backends import get_backend
 from automation.backends.base import NATIVE_SHUTDOWN_CANCELLED_MSG, NotSupported
 from automation.proactive import proactive_engine
 from settings.config import config
-from vision.screen_capture import _enforce_retention
+from vision.screen_capture import _capture_age_key, _enforce_retention
 
 # Tier 15: set_clipboard needs to WRITE the clipboard - brain/handlers/
 # system.py's get_clipboard already guards the same optional dependency
@@ -1151,8 +1151,9 @@ class AppController:
                 if not files:
                     return act.fail("No screenshots found in the folder to delete.")
 
-                # Sabse naya file dhundho (Time ke hisaab se)
-                latest_file = max(files, key=os.path.getctime)
+                # Sabse naya file dhundho (Time ke hisaab se; a tie - two shots
+                # within one tick of the file clock - goes to the later name)
+                latest_file = max(files, key=_capture_age_key)
 
                 # Phase 4: into Wave's recoverable trash instead of oblivion (undoable).
                 stashed = undo_mod.trash.stash(latest_file) if undo_mod.trash_enabled() else None
@@ -1460,8 +1461,14 @@ class AppController:
     def _resolve_watch_folder(cls, folder: str):
         if not folder:
             return None
+        if os.path.isabs(folder):
+            return folder                       # the user's own absolute path, as given
         expanded = os.path.expanduser(folder)
-        return expanded if os.path.isabs(expanded) else os.path.join(os.path.expanduser("~"), expanded)
+        if not os.path.isabs(expanded):
+            expanded = os.path.join(os.path.expanduser("~"), expanded)
+        # Built here, so written the platform's way: on Windows
+        # expanduser("~/Desktop") is "C:\Users\me/Desktop", slashes mixed.
+        return os.path.normpath(expanded)
 
     @classmethod
     def watch_for_download(cls, folder: str = None, timeout_minutes: float = None) -> str:

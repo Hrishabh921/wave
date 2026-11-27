@@ -92,8 +92,11 @@ TOOL_LABELS = {
     # bare direction never could) - see automation/app_control.py's own
     # comment on _nudge_volume/_nudge_brightness for exactly when each
     # name gets used. volume_max/volume_min/brightness_max/brightness_min
-    # have NO entry here - they always delegate to set_volume/
-    # set_brightness, never audited under their own name.
+    # always delegate to set_volume/set_brightness - a row carries their own
+    # name only when the AI or the fast path asked for them (the dispatcher's
+    # scope adopts the delegate, see _ADOPTS_DELEGATE).
+    "volume_max": "Volume to max", "volume_min": "Volume to min",
+    "brightness_max": "Brightness to max", "brightness_min": "Brightness to min",
     "set_volume": "Set volume", "mute_volume": "Muted the volume", "unmute_volume": "Unmuted the volume",
     "set_brightness": "Set brightness",
     "brightness_up": "Brightness up", "brightness_down": "Brightness down",
@@ -404,6 +407,24 @@ class ActionScope:
         return False
 
 
+# A dispatcher scope also adopts the one tool it always hands the real work
+# to: volume_up/volume_down/volume_max/volume_min change the volume through
+# set_volume (brightness_* through set_brightness), which audits under its own
+# name - so on a PC where the volume can be read, every AI or fast-path
+# "volume up" left TWO rows, "Volume up" (no undo) and "Set volume 60 (can be
+# undone)", and a run of them never grouped into "Volume up (x3)". Adopted,
+# it's one row under the name the user asked for, with the delegate's outcome
+# and undo recipe. The delegate's args (the new percent) stay out of that row
+# - they'd make every summary different - while its result text and undo
+# label still carry them ("Volume set to 60%", "Set the volume back to 50%").
+# Called directly (a UI button), the delegate is still its own row.
+_ADOPTS_DELEGATE = {
+    "volume_up": "set_volume", "volume_down": "set_volume", "volume_max": "set_volume", "volume_min": "set_volume",
+    "brightness_up": "set_brightness", "brightness_down": "set_brightness",
+    "brightness_max": "set_brightness", "brightness_min": "set_brightness",
+}
+
+
 class _JoinedScope:
     """What a backend gets when it runs inside an adoptable dispatcher scope."""
 
@@ -505,8 +526,11 @@ class Audit:
         """Start recording an action. See the module docstring for adoption rules."""
         stack = self._stack()
         top = stack[-1] if stack else None
-        if top is not None and top.adoptable and top.tool == tool and not adoptable:
-            return _JoinedScope(top, _shorten(args or {}))
+        if top is not None and top.adoptable and not adoptable:
+            if top.tool == tool:
+                return _JoinedScope(top, _shorten(args or {}))
+            if _ADOPTS_DELEGATE.get(top.tool) == tool:
+                return _JoinedScope(top, None)
         inherited = top.source if top is not None else None
         return ActionScope(self, tool, _shorten(args or {}), source or inherited or "ui",
                            adoptable=adoptable, collapse_if_children=collapse_if_children)

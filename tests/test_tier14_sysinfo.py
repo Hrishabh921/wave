@@ -209,8 +209,12 @@ class GpuStatusTests(unittest.TestCase):
 
 
 class CpuTemperatureTests(unittest.TestCase):
+    # psutil has no sensors_temperatures() at all on Windows (and macOS) - the
+    # app's AttributeError branch is for exactly that - so the fake has to be
+    # created (create=True), not swapped in; without it every test here errored
+    # on Windows before reaching the code under test.
     def _temps(self, value):
-        with mock.patch("monitoring.sys_monitor.psutil.sensors_temperatures", return_value=value):
+        with mock.patch("monitoring.sys_monitor.psutil.sensors_temperatures", create=True, return_value=value):
             return SystemMonitor.get_cpu_temperature()
 
     def test_no_sensors_available_mentions_windows_and_macos(self):
@@ -220,7 +224,7 @@ class CpuTemperatureTests(unittest.TestCase):
         self.assertIn("macOS", result)
 
     def test_attribute_error_is_treated_as_no_sensors(self):
-        with mock.patch("monitoring.sys_monitor.psutil.sensors_temperatures", side_effect=AttributeError):
+        with mock.patch("monitoring.sys_monitor.psutil.sensors_temperatures", create=True, side_effect=AttributeError):
             result = SystemMonitor.get_cpu_temperature()
         self.assertIn("isn't available on this system", result)
 

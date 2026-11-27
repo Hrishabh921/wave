@@ -26,6 +26,15 @@ INTERNAL_SCREENSHOT_PREFIX = "wave_internal_"
 MAX_INTERNAL_SCREENSHOTS = 15
 
 
+def _capture_age_key(path: str):
+    """Sort key for "how new is this capture": creation time, then the file
+    name. Two captures written within one tick of Windows' file clock share
+    a creation time, and max()/sort() then fell back to directory order -
+    picking the OLDER file as "the latest". Wave's capture names carry their
+    timestamp (Wave_20260101_000002.png), so the name settles such a tie."""
+    return (os.path.getctime(path), os.path.basename(path))
+
+
 def _enforce_retention(save_dir: str, prefix: str, max_files: int):
     """Keeps only the newest `max_files` files matching `prefix` in
     `save_dir`, deleting older ones. Never touches files with a different
@@ -38,7 +47,7 @@ def _enforce_retention(save_dir: str, prefix: str, max_files: int):
         ]
         if len(matches) <= max_files:
             return
-        matches.sort(key=os.path.getctime, reverse=True)
+        matches.sort(key=_capture_age_key, reverse=True)
         for stale_path in matches[max_files:]:
             try:
                 os.remove(stale_path)

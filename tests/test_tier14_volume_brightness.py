@@ -402,20 +402,19 @@ class WindowsVolumeBrightnessTests(unittest.TestCase):
         """No HAS_* guard for this one (unlike pycaw) - a plain local
         `import screen_brightness_control` wrapped in `except Exception`,
         so a missing package is already a graceful NotSupported, confirmed
-        against this sandbox's own genuine absence of the package. Pops any
-        sys.modules entry first and restores it after - another test in
-        this file installs a FAKE module under this same name, and
-        sys.modules is process-global, so this test must not depend on
-        running before that one."""
-        saved = sys.modules.pop("screen_brightness_control", None)
-        try:
+        against this sandbox's own genuine absence of the package. Hides
+        the package for the test's duration and restores the sys.modules
+        entry after - another test in this file installs a FAKE module
+        under this same name, and sys.modules is process-global, so this
+        test must not depend on running before that one."""
+        # A None entry makes the import itself fail. Just popping the entry
+        # let a machine that HAS the package (the owner's PC) import the real
+        # one - and read the real screen's brightness - instead.
+        with mock.patch.dict(sys.modules, {"screen_brightness_control": None}):
             b = WindowsBackend()
             with self.assertRaises(NotSupported) as ctx:
                 b.get_brightness()
             self.assertIn("brightness", str(ctx.exception).lower())
-        finally:
-            if saved is not None:
-                sys.modules["screen_brightness_control"] = saved
 
     def test_set_brightness_calls_the_real_helper_when_available(self):
         # install_fake_module() only APPLIES its kwargs the first time a

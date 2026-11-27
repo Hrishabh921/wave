@@ -93,7 +93,12 @@ class SttHintTests(unittest.TestCase):
     rejected transcript for the mic worker."""
 
     def _run(self, hint, judged_text, reason):
-        import voice.stt as stt_mod
+        # Patch the module this engine's code really runs in. Other test files
+        # evict and re-import voice.stt (test_tier9_stt does, for every test),
+        # so `import voice.stt` here could be a NEWER copy than the one
+        # stt_engine - imported when this file loaded - belongs to; the patch
+        # then missed, and in a full run the prompt lost its "Hinglish hint".
+        home = type(stt_engine)._recognize_with_whisper.__globals__
         captured = {}
 
         class Seg:
@@ -110,8 +115,8 @@ class SttHintTests(unittest.TestCase):
         self.addCleanup(setattr, stt_engine, "wake_hint", old)
         stt_engine.wake_hint = hint
         with mock.patch.object(stt_engine, "_get_whisper_model", return_value=Model()), \
-                mock.patch.object(stt_mod.transcript_filter, "judge", return_value=verdict), \
-                mock.patch.object(stt_mod.language.tracker, "initial_prompt", return_value="Hinglish hint"):
+                mock.patch.object(home["transcript_filter"], "judge", return_value=verdict), \
+                mock.patch.object(home["language"].tracker, "initial_prompt", return_value="Hinglish hint"):
             out = stt_engine._recognize_with_whisper(audio)
         return out, captured
 

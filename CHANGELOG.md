@@ -2,6 +2,23 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 54 — The whole test suite passes on the owner's PC (2026-11-27)
+
+On the owner's Windows laptop the suite always ended "21 failures + 7 errors", written off as environmental - so a real regression could hide among them. Each one, by cause:
+- **7 errors, `test_tier14_sysinfo`:** psutil has no `sensors_temperatures()` at all on Windows (Wave already handles that); `mock.patch` refused to patch a function that doesn't exist - the patches now create it.
+- **10 failures, notes search (`test_phase6_notes_rag`, `test_tier20_policy_matrix`):** the owner's `.env` turns notes search off. It is now off for every test run (`tests/_phase4_support.py`) - on, GroqBrain's background start would index the developer's real Desktop/Documents/Downloads - and those two classes turn it on over their own temp folder.
+- **5 failures, `test_phase4_platform`:** the golden log was recorded where nothing is installed and paths use "/". On Windows the scenarios read the real registry (Brave's App Paths entry put the real brave.exe in place of the scenario's), paths came out with "\", and the "without pywin32" test listed the developer's real open windows. The scenarios now see an empty registry and no WhatsApp under %LOCALAPPDATA%, `<ROOT>` paths compare with "/", and that test hides pywin32.
+- **1 failure, `test_tier14_volume_brightness`:** "without screen_brightness_control" popped the module from `sys.modules`, so the installed package was imported again - and the real screen's brightness read. A `None` entry makes the import fail, as intended.
+- **1 failure, `test_phase4_provider`:** "a refused connection is retried once" was timed (under 4 s), but Windows takes ~2 s to refuse a connection to a closed local port, so a correct client took 4.9 s. The test now counts the attempts (2) and the pauses (one of 0.8 s).
+- **2 failures, `test_tier30_wake_words`:** order-dependent - `test_tier9_stt` evicts and re-imports `voice.stt`, so the test patched a newer copy of the module than the one its `stt_engine` runs in. It patches the engine's own module now.
+
+Three of them were real bugs in Wave, now fixed:
+- **One activity row per command.** On a PC whose volume can be read, a voice/AI "volume up" left two rows - "Volume up" and "Set volume 60 (can be undone)" - because AppController hands the change to `set_volume`, which audits under its own name; "my recent actions" never grouped a run of them (`test_phase4_brain`). The dispatcher's scope now adopts that delegate (`_ADOPTS_DELEGATE` in `automation/audit.py`; volume up/down/max/min and the brightness ones too): one row under the name the user asked for, with the undo. A UI button still records `set_volume`.
+- **"Delete my latest screenshot"** chose by creation time; two shots within one tick of Windows' file clock share it, and then the OLDER one was deleted. The file name (it carries the timestamp) now settles a tie - there and in the screenshot clean-up.
+- **"Watch ~/Desktop for a download"** said `C:\Users\me/Desktop`; a path Wave builds is now written the platform's way, while an absolute path the user gave is left as given.
+
+Result on the owner's PC: 2958 tests, **0 failures, 0 errors** (349 skipped, as before), no network request. 9 new tests in `tests/test_tier54_green_on_windows.py`, each of which fails without its fix.
+
 ## Tier 53 — Dodo fills the page with the whole photo (2026-11-27)
 
 After the owner swapped in a new photo, Dodo sat small in the middle of her page, drawn from a crop of it; they asked for the photo across the whole window, with nothing cut off. Now:

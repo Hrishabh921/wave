@@ -55,11 +55,16 @@ class IndexingTests(unittest.TestCase):
         # Desktop/Documents/Downloads of whatever machine runs this test).
         patcher = mock.patch.object(nr, "_search_dirs", return_value=[self.notes_dir])
         patcher.start()
+        # tests/_phase4_support.py keeps notes search off for the whole run
+        # (it would index the real Desktop etc.); here it only sees the temp dir.
+        old_enabled = config.NOTES_RAG_ENABLED
+        config.NOTES_RAG_ENABLED = True
 
         def cleanup():
             patcher.stop()
             db.db_path = self.old_db_path
             config.NOTES_DIR = old_notes_dir
+            config.NOTES_RAG_ENABLED = old_enabled
         self.addCleanup(cleanup)
 
         self.index = nr.NotesIndex()
