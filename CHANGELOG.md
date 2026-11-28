@@ -2,6 +2,25 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 55 — Whisper medium on the GPU, and spoken commands that keep Whisper's punctuation (2026-11-28)
+
+Compared with SARA (Whisper medium on the GPU), the owner asked to test bigger models on this PC. Measured on 320 spoken commands - 80 golden-set commands (30 English, 30 Hinglish, 20 Hindi), two Indian edge-tts voices each, clean and with 10 dB of noise, decoded exactly like `voice/stt.py`:
+
+| model | word errors | time per command | GPU memory |
+|---|---|---|---|
+| base, CPU (until now) | 44% | 0.47 s | – |
+| small, CPU | 27% | 1.2 s | – |
+| medium, CPU | 22% | 3.8 s (slower than the speech) | – |
+| small, GPU | 27% | 0.20 s | 1.0 GB |
+| medium, GPU int8_float16 | 21.5% | 0.35-0.42 s | 1.3 GB |
+
+- **New `voice/whisper_device.py`.** `FASTER_WHISPER_DEVICE=cuda`/`auto` now loads `FASTER_WHISPER_GPU_MODEL` (medium, int8_float16) on the GPU while the CPU keeps `FASTER_WHISPER_MODEL` (base) - and only after a half-second test decode. A model loads on the GPU fine without NVIDIA's CUDA 12 libraries and fails only on its first decode ("Library cublas64_12.dll is not found"): with the old code, `auto` on this PC would have sent every utterance to Google. Wave's own environment has no CUDA libraries; they're looked for in `CUDA_DLL_DIR`, pip's nvidia-cublas/cudnn wheels, the LivePortrait environment's CUDA torch (via `AVATAR_LIVE_PYTHON` - what this PC uses) and `CUDA_PATH`, and loaded once by full path (CTranslate2 opens them by name with plain LoadLibrary, which ignores `os.add_dll_directory`), so PATH and the programs Wave starts are left alone. Anything failing falls back to the CPU model, as before.
+- **The model loads when the mic starts** (`FASTER_WHISPER_PRELOAD`, both UIs): medium takes ~4 s to load and prove itself, and the first command no longer waits for it.
+- **A confidence floor per model.** medium is less sure of itself than base at the same accuracy - at the 0.35 floor it threw away 6.5% of right transcripts; `WHISPER_GPU_MIN_CONFIDENCE` (0.25) leaves 1.6%.
+- **The router ignores Whisper's sentence punctuation.** Whisper ends a spoken sentence with "." / "!" or the danda "।", and the voice path hands the brain the transcript as it is - so "Set the volume to 5." matched nothing (Tier 50: the number must end the command), no Devanagari phrase matched "पेंट खोलो।", and "Open Chrome." asked for an app called "chrome.". `intent_router.route` now drops a trailing `. ! , ; : । ॥ …` - a "?" stays, "dark mode on?" is a question - and a comma may follow a volume/brightness number.
+
+On this PC `.env` got `FASTER_WHISPER_DEVICE=auto`. The same 320 clips through Wave's own speech path afterwards: commands the fast path gets right 32% → 56% (English 61 → 81%, Hinglish 23 → 58%, Hindi 2.5 → 15%), 0.47 → 0.40 s per command, 1.3 GB of GPU memory. Hindi stays low because the router knows exact Devanagari phrases only, and Whisper's spellings vary (वोल्यूम/वॉल्यूम) - a next step. Tests never try the developer's GPU or preload a model (`tests/_phase4_support.py`); 20 new tests in `tests/test_tier55_stt_gpu.py`; `voice/whisper_device.py` joins the typed core (76 files).
+
 ## Tier 54 — The whole test suite passes on the owner's PC (2026-11-27)
 
 On the owner's Windows laptop the suite always ended "21 failures + 7 errors", written off as environmental - so a real regression could hide among them. Each one, by cause:

@@ -691,7 +691,9 @@ def _set_percent_cmd(lower: str, skill: str, trigger_words: Tuple[str, ...]) -> 
     # Tier 50 (found by bench/heldout/): "volume 2 of the book" set the
     # volume to 2%. Nothing but "percent"/"kar do"-style words may follow
     # the number.
-    if any(w not in _PCT_TAIL_OK for w in re.findall(r"[^\s]+", lower[m.end():])):
+    # Tier 55: Whisper's punctuation after the number ("to 5, please") isn't a word.
+    tail = [w.strip(".,!;:।") for w in re.findall(r"[^\s]+", lower[m.end():])]
+    if any(w and w not in _PCT_TAIL_OK for w in tail):
         return None
     pct = int(m.group(1))
     return (skill, {"percent": pct}) if 0 <= pct <= 100 else None
@@ -1515,13 +1517,23 @@ def _restore_case(original: str, lower: str, value: str) -> str:
     return original[idx: idx + len(value)] if idx >= 0 else value
 
 
+# Tier 55: Whisper ends a spoken sentence with "." / "!" or the Hindi danda
+# "।", and the voice path hands the brain the transcript as it is
+# (voice/commands.py's strip_wake_phrase keeps casing and punctuation) - so
+# "Set the volume to 5." never matched a rule that needs the number to end
+# the command, no Devanagari phrase matched "पेंट खोलो।", and those went to
+# the LLM instead (measured: 9-17% of spoken commands). A trailing "?" stays:
+# "dark mode on?" is a question, not "dark mode on".
+_TRAILING_PUNCT_RE = re.compile(r"[\s.!,;:।॥…]+$")
+
+
 def route(user_text: str) -> Optional[RoutedIntent]:
     """Returns a RoutedIntent if `user_text` unambiguously matches one of
     the curated rules above, else None - meaning: let the normal LLM
     tool-calling loop decide, exactly as before this module existed."""
     if not user_text or not user_text.strip():
         return None
-    original = user_text.strip()
+    original = _TRAILING_PUNCT_RE.sub("", user_text.strip()) or user_text.strip()
     lower = original.lower()
     if _is_compound_or_ambiguous(lower):
         return None

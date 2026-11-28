@@ -21,6 +21,7 @@ from voice import vocabulary
 # below), so popping "voice.language" actually gets a fresh tracker.
 import voice.language as language
 import voice.speaker_id as speaker_id
+from voice import whisper_device
 from voice.endpoint import EndpointConfig
 from settings.config import config
 
@@ -171,6 +172,11 @@ class SpeechReceiver:
         # session so a broken install doesn't retry on every single thing said.
         self._whisper_model = None
         self._whisper_load_failed = False
+        # Tier 55: which model that is (GPU medium or CPU base - see
+        # voice/whisper_device.py), and the background preload's guard.
+        self._whisper = None
+        self._whisper_load_lock = threading.Lock()
+        self._whisper_preload_started = False
 
         # 🔧 Tier 7: a real speech/non-speech check (voice/buffers.py) run
         # over a captured utterance before recognition sees it - see
@@ -293,21 +299,45 @@ class SpeechReceiver:
             return None
         if self._whisper_model is not None:
             return self._whisper_model
-        try:
-            self._whisper_model = WhisperModel(
-                config.FASTER_WHISPER_MODEL,
-                device=config.FASTER_WHISPER_DEVICE,
-                compute_type=config.FASTER_WHISPER_COMPUTE_TYPE,
-            )
-            logger.info(
-                f"Loaded local faster-whisper model '{config.FASTER_WHISPER_MODEL}' "
-                f"({config.FASTER_WHISPER_DEVICE}/{config.FASTER_WHISPER_COMPUTE_TYPE})."
-            )
+        with self._whisper_load_lock:         # the preload thread may be loading it right now
+            if self._whisper_model is not None:
+                return self._whisper_model
+            if self._whisper_load_failed:
+                return None
+            try:
+                # Tier 55: the GPU model when FASTER_WHISPER_DEVICE allows it
+                # and a test decode proves the GPU works, else the CPU model.
+                loaded = whisper_device.load_whisper_model(WhisperModel, np if HAS_NUMPY else None)
+            except Exception as e:
+                logger.warning(f"faster-whisper model load failed, staying on Google STT: {e}")
+                self._whisper_load_failed = True
+                return None
+            self._whisper = loaded
+            self._whisper_model = loaded.model
+            logger.info(f"Loaded local faster-whisper model '{loaded.name}' ({loaded.device}/{loaded.compute_type}).")
             return self._whisper_model
-        except Exception as e:
-            logger.warning(f"faster-whisper model load failed, staying on Google STT: {e}")
-            self._whisper_load_failed = True
-            return None
+
+    def preload_whisper(self) -> None:
+        """Tier 55: loads the Whisper model in the background as soon as the
+        mic starts, so the first thing said isn't the one that waits for it
+        (medium on the GPU takes ~3 s to load and prove itself)."""
+        if (not HAS_FASTER_WHISPER or not HAS_NUMPY or not config.FASTER_WHISPER_ENABLED
+                or not getattr(config, "FASTER_WHISPER_PRELOAD", True)
+                or self._whisper_model is not None or self._whisper_load_failed):
+            return
+        with self._whisper_load_lock:
+            if self._whisper_preload_started:
+                return
+            self._whisper_preload_started = True
+        threading.Thread(target=self._get_whisper_model, name="WaveWhisperPreload", daemon=True).start()
+
+    def _min_confidence(self) -> float:
+        """The transcript filter's floor for the model in use - Tier 55: the GPU
+        model (medium) is less sure of itself than base, at the same accuracy."""
+        loaded = self._whisper
+        if loaded is not None and loaded.model is self._whisper_model:
+            return loaded.min_confidence
+        return float(getattr(config, "WHISPER_MIN_CONFIDENCE", 0.35))
 
     def _recognize_with_whisper(self, audio: sr.AudioData, audio_s: float = None, snr_db: float = None):
         """Returns the recognized text (possibly "" if Whisper ran but
@@ -379,7 +409,7 @@ class SpeechReceiver:
             text = "".join(seg.text for seg in segments).strip()
             verdict = transcript_filter.judge(
                 text, infos, audio_s=audio_s if audio_s is not None else len(raw) / 32000.0, snr_db=snr_db,
-                min_confidence=float(getattr(config, "WHISPER_MIN_CONFIDENCE", 0.35)))
+                min_confidence=self._min_confidence())
             self.last_confidence = round(verdict.confidence, 3)
             if verdict.reason:
                 logger.info(f"Whisper transcript {text[:50]!r}: {verdict.reason}")

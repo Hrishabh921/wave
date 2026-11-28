@@ -97,12 +97,19 @@ if "settings.config" in sys.modules:
 # The owner's .env happens to switch it off, which also made the notes tests
 # (test_phase6_notes_rag, test_tier20_policy_matrix) fail on their PC - so it's
 # off for every machine now, and those tests switch it on with a temp folder.
+# Tier 55: and never load a real Whisper model in the background when a test
+# starts a mic worker (FASTER_WHISPER_PRELOAD).
 for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GROUNDING", "CONTEXT_LINE",
               "ECHO_GUARD", "AEC_SYSTEM_REFERENCE", "PROACTIVE_LLM_REWORD_ENABLED", "CONTEXTUAL_REMINDER_LLM",
-              "NOTES_RAG_ENABLED"):
+              "NOTES_RAG_ENABLED", "FASTER_WHISPER_PRELOAD"):
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)
+# Tier 55: nor try the developer's GPU - their .env may say
+# FASTER_WHISPER_DEVICE=auto. tests/test_tier55_stt_gpu.py sets it itself.
+os.environ.setdefault("FASTER_WHISPER_DEVICE", "cpu")
+if "settings.config" in sys.modules:
+    sys.modules["settings.config"].config.FASTER_WHISPER_DEVICE = "cpu"
 
 
 # Tests never touch the developer's real volume, screen brightness, keyboard

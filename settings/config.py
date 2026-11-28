@@ -205,12 +205,30 @@ class Config:
     FASTER_WHISPER_ENABLED = os.getenv("FASTER_WHISPER_ENABLED", "true").strip().lower() not in ("false", "0", "no")
     # "tiny"/"base"/"small"/"medium"/"large-v3" - bigger is more accurate and
     # slower. "base" is a reasonable default for a live voice assistant on
-    # a CPU.
+    # a CPU. Since Tier 55 this is the CPU model (and the GPU's fallback).
     FASTER_WHISPER_MODEL = os.getenv("FASTER_WHISPER_MODEL", "base")
+    # Tier 55: "cpu" = the model above on the CPU. "cuda"/"auto" = the GPU
+    # model below on an NVIDIA GPU - but only once a test decode proves the
+    # GPU and its CUDA 12 libraries work (voice/whisper_device.py), else the
+    # CPU model anyway, so "auto" is always safe to set.
     FASTER_WHISPER_DEVICE = _choice_env("FASTER_WHISPER_DEVICE", "cpu", ("cpu", "cuda", "auto"))
-    # "int8" is the fast, low-memory choice for CPU. Use "float16" if
-    # FASTER_WHISPER_DEVICE is "cuda".
+    # "int8" is the fast, low-memory choice for CPU.
     FASTER_WHISPER_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_COMPUTE_TYPE", "int8")
+    # Tier 55: the GPU model. Measured on 320 spoken commands (2026-11-27,
+    # RTX 3050): medium int8_float16 makes half the word errors of base on
+    # the CPU (21.5% vs 44%) in about the same time per command (~0.4 s vs
+    # 0.47 s) with 1.3 GB of GPU memory; small takes 0.2 s at 27%. On the CPU
+    # medium needs 3.8 s - slower than the speech itself.
+    FASTER_WHISPER_GPU_MODEL = os.getenv("FASTER_WHISPER_GPU_MODEL", "medium").strip() or "medium"
+    FASTER_WHISPER_GPU_COMPUTE_TYPE = os.getenv("FASTER_WHISPER_GPU_COMPUTE_TYPE", "int8_float16").strip() or "int8_float16"
+    # Where NVIDIA's CUDA 12 DLLs (cuBLAS, cuDNN 9) are, if not found on their
+    # own - several folders separated by ";". Wave also looks in pip's
+    # nvidia-cublas-cu12/nvidia-cudnn-cu12 wheels, the LivePortrait
+    # environment (AVATAR_LIVE_PYTHON - its CUDA torch ships both) and CUDA_PATH.
+    CUDA_DLL_DIR = os.getenv("CUDA_DLL_DIR", "").strip()
+    # Tier 55: load the model in the background when the mic starts, so the
+    # first thing said doesn't wait for it (~3 s for medium on the GPU).
+    FASTER_WHISPER_PRELOAD = os.getenv("FASTER_WHISPER_PRELOAD", "true").strip().lower() not in ("false", "0", "no")
 
     # ── Tier 10: mic capture limits (voice/stt.py) ──────────────────────
     # STT_PHRASE_TIME_LIMIT_S: the longest a single spoken command may run
@@ -263,6 +281,10 @@ class Config:
     # Whisper hygiene (voice/transcript_filter.py): below this average
     # confidence a transcript counts as "didn't catch that".
     WHISPER_MIN_CONFIDENCE = _float_env("WHISPER_MIN_CONFIDENCE", "0.35", min=0.0, max=1.0)
+    # Tier 55: the same floor for the GPU model. medium's confidence runs
+    # lower than base's: at 0.35 it threw away 6.5% of transcripts that were
+    # right (base and small: under 1%), at 0.25 1.6%.
+    WHISPER_GPU_MIN_CONFIDENCE = _float_env("WHISPER_GPU_MIN_CONFIDENCE", "0.25", min=0.0, max=1.0)
     # Tier 29 (web UI mic): while awake, a short (3 words or fewer) transcript
     # without the wake word, below this confidence, that the intent router
     # doesn't recognise is treated as room noise instead of a question for

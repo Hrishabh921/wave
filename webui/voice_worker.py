@@ -263,6 +263,9 @@ class WebContinuousMicWorker(threading.Thread):
     def run(self):
         self._on_mode_changed(self.mode, False)
         stt_engine.set_level_callback(self._on_audio_level)
+        preload = getattr(stt_engine, "preload_whisper", None)    # Tier 55: model ready before the first word
+        if callable(preload):
+            preload()
         try:
             while self.is_running:
                 self._sync_captions()
