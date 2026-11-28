@@ -2,6 +2,14 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 56 — Hindi commands spelled the way Whisper writes them (2026-11-28)
+
+After Tier 55 Hindi (Devanagari) was still the weak spot: 15% of spoken Hindi commands reached the fast path, against 81% English. The router knows one spelling per Devanagari word ("आवाज़", "वॉल्यूम", "रीलोड"), and Whisper medium wrote the same words many ways on the benchmark clips - कोपी/कौपी for कॉपी, हूआ for हुआ, जूम for ज़ूम, शट्डाउन, रिलोड, हाईबर्नेट, रीसाइकल, कम्प्यूटर - and split some in two ("री लोड", "हाई बरनेट", "पूर ववत").
+
+`brain/intent_router.py` now gives every Devanagari word a spelling key that ignores those differences - nukta, halant, long vs short i/u, ॉ/ौ vs ो, chandrabindu vs anusvara, a half न/म before a consonant vs anusvara, ाय/ाए vs ाइ - and before matching rewrites a word of the message to the rules' own spelling when their keys match, joining two words when together they make one. Only Devanagari words are touched, only into words the rules use, and a key two spellings in the rules share is left alone (there are none today: 104 words, 104 keys). The vocabulary is read off the rules themselves (their strings, closures and code constants - this works from .pyc too), so a Devanagari phrase added to a rule later is covered with nothing else to update.
+
+Measured through Wave's own speech path (medium on the GPU) on the 320 benchmark clips: Hindi commands right 15% → 41%, English and Hinglish unchanged (81%, 58%), all commands 56% → 62.5%. Mishearings stay misses - आवास for आवाज़, लोग for लॉक, देसक टोप for डेस्कटॉप - and exact-match rules stay exact ("यहाँ पूर्ववत करो" is not "यह पूर्ववत करो"). The golden set is still 100% with no false triggers (`bench.run_bench --mode all --compare`: no regressions), and the held-out bench still shows 0 wrong actions and its one known false trigger. Negation still blocks ("आवाज बढाओ मत"). 8 new tests in `tests/test_tier56_hindi_spelling.py`, each spelling one Whisper really wrote.
+
 ## Tier 55 — Whisper medium on the GPU, and spoken commands that keep Whisper's punctuation (2026-11-28)
 
 Compared with SARA (Whisper medium on the GPU), the owner asked to test bigger models on this PC. Measured on 320 spoken commands - 80 golden-set commands (30 English, 30 Hinglish, 20 Hindi), two Indian edge-tts voices each, clean and with 10 dB of noise, decoded exactly like `voice/stt.py`:

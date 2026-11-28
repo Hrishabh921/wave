@@ -71,9 +71,11 @@ _MAX_PREFIX_ARG_WORDS): "open"/"close"/"play" as the first word of a
 message is also how several common idioms start ("close enough", "play
 devil's advocate") without being commands at all.
 """
+import functools
 import re
+import types
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 RouteResult = Optional[Tuple[str, Dict[str, Any]]]
 _Matcher = Callable[[str], RouteResult]
@@ -1527,6 +1529,108 @@ def _restore_case(original: str, lower: str, value: str) -> str:
 _TRAILING_PUNCT_RE = re.compile(r"[\s.!,;:।॥…]+$")
 
 
+# Tier 56: Hindi commands spelled the way Whisper writes them. The rules
+# above know one spelling per Devanagari word ("आवाज़", "वॉल्यूम", "रीलोड"),
+# but Whisper writes the same word many ways - measured on spoken Hindi
+# commands: कोपी/कौपी for कॉपी, हूआ for हुआ, जूम for ज़ूम, शट्डाउन, रिलोड,
+# हाईबर्नेट, रीसाइकल - and splits words ("री लोड", "हाई बरनेट", "पूर ववत").
+# So each Devanagari word gets a spelling key that ignores those differences,
+# and a word of the message whose key matches a word the rules use is
+# rewritten to the rules' spelling before matching (two words joined, when
+# together they are one). The rules' own vocabulary is read off the rules
+# themselves, so a phrase added later is covered without a list to update.
+# Mishearings stay misses (आवास for आवाज़, लोग for लॉक).
+_DEVA_WORD_RE = re.compile("[ऀ-ॣॱ-ॿ‌‍]+")    # letters/signs: not dandas or digits
+_DEVA_FOLD = str.maketrans({
+    "़": None, "्": None, "‌": None, "‍": None,            # nukta, halant, ZWNJ, ZWJ
+    "क़": "क", "ख़": "ख", "ग़": "ग", "ज़": "ज",  # precomposed nukta letters
+    "ड़": "ड", "ढ़": "ढ", "फ़": "फ", "य़": "य",
+    "ॉ": "ो", "ौ": "ो", "ॅ": "े",                # ॉ ौ -> ो, ॅ -> े
+    "ऑ": "ओ", "औ": "ओ", "ऍ": "ए",                # ऑ औ -> ओ, ऍ -> ए
+    "ँ": "ं",                                                         # chandrabindu -> anusvara
+    "ी": "ि", "ू": "ु", "ई": "इ", "ऊ": "उ",  # long i/u -> short
+})
+_HALF_NASAL_RE = re.compile("[ङञणनम]्(?=[क-ह])")   # न्प -> ंप
+_AI_GLIDE_RE = re.compile("ा[यए]")                                  # ाय / ाए -> ाइ
+
+
+def _deva_key(word: str) -> str:
+    word = _HALF_NASAL_RE.sub("ं", word)
+    return _AI_GLIDE_RE.sub("ाइ", word.translate(_DEVA_FOLD))
+
+
+@functools.lru_cache(maxsize=1)
+def _devanagari_vocabulary() -> Tuple[Dict[str, str], frozenset]:
+    """(spelling key -> the rules' spelling, the rules' spellings), read off
+    every string this module's rules and helpers hold. A key two different
+    spellings share is left out - either spelling still matches as written."""
+    words: Set[str] = set()
+    seen: Set[int] = set()
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, str):
+            words.update(w for w in _DEVA_WORD_RE.findall(obj) if len(w) > 1)
+        elif isinstance(obj, (tuple, list, set, frozenset)):
+            for x in obj:
+                walk(x)
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                walk(k)
+                walk(v)
+        elif isinstance(obj, (types.FunctionType, types.CodeType, _Rule)) and id(obj) not in seen:
+            seen.add(id(obj))
+            if isinstance(obj, _Rule):
+                walk(obj.matcher)
+            elif isinstance(obj, types.CodeType):
+                walk(obj.co_consts)
+            elif obj.__module__ == __name__:
+                walk(obj.__code__)
+                for cell in obj.__closure__ or ():
+                    try:
+                        walk(cell.cell_contents)
+                    except ValueError:          # an empty cell
+                        pass
+    for name, value in list(globals().items()):
+        if not name.startswith("__"):
+            walk(value)
+    by_key: Dict[str, Set[str]] = {}
+    for w in words:
+        by_key.setdefault(_deva_key(w), set()).add(w)
+    vocab = {k: next(iter(v)) for k, v in by_key.items() if len(v) == 1}
+    return vocab, frozenset(words)
+
+
+def _respell_devanagari(text: str) -> str:
+    """Rewrites the Devanagari words of `text` that are the rules' words spelled
+    another way to the rules' spelling (see the comment above). Anything
+    else - Latin text included - comes back unchanged."""
+    if not _DEVA_WORD_RE.search(text):
+        return text
+    vocab, spellings = _devanagari_vocabulary()
+    parts = _DEVA_WORD_RE.split(text)            # text between the words
+    words = _DEVA_WORD_RE.findall(text)
+    out = [parts[0]]
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if w not in spellings:
+            same = vocab.get(_deva_key(w))
+            if same:
+                out += [same, parts[i + 1]]
+                i += 1
+                continue
+            # Whisper split one word in two ("री लोड"): join them back
+            if i + 1 < len(words) and parts[i + 1] == " " and words[i + 1] not in spellings:
+                joined = vocab.get(_deva_key(w + words[i + 1]))
+                if joined:
+                    out += [joined, parts[i + 2]]
+                    i += 2
+                    continue
+        out += [w, parts[i + 1]]
+        i += 1
+    return "".join(out)
+
+
 def route(user_text: str) -> Optional[RoutedIntent]:
     """Returns a RoutedIntent if `user_text` unambiguously matches one of
     the curated rules above, else None - meaning: let the normal LLM
@@ -1534,6 +1638,7 @@ def route(user_text: str) -> Optional[RoutedIntent]:
     if not user_text or not user_text.strip():
         return None
     original = _TRAILING_PUNCT_RE.sub("", user_text.strip()) or user_text.strip()
+    original = _respell_devanagari(original)     # Tier 56
     lower = original.lower()
     if _is_compound_or_ambiguous(lower):
         return None
