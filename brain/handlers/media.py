@@ -70,10 +70,46 @@ def toggle_system_mute() -> bool:
         return False
 
 
-@skill("play_youtube", "Plays a song or video on YouTube. Use this whenever the user asks to play, put on, or listen to any song/music/video.",
-       {"query": {"type": "string", "description": "Song name, artist, or video to search and play."}}, ["query"])
+_BROWSERS = ("brave", "chrome", "edge", "firefox", "opera")
+_MEDIA_WORDS = ("youtube", "song", "music", "video", "gaana", "gana", "media", "play")
+
+
+def preferred_media_browser():
+    """Tier 57: the browser the user told Wave to play songs/videos in. The
+    model saves such a wish with remember_this under a key it picks itself
+    (on the owner's PC: "preferred_browser_for_youtube: Brave") - and the
+    play path never read it, so songs kept opening in the default browser.
+    A key about YouTube/songs/music/videos wins over a general one
+    ("preferred_browser"); None when nothing like that is remembered."""
+    try:
+        from database.db_manager import db
+        facts = db.get_all_memory(include_archived=False)
+    except Exception:
+        logger.debug("preferred browser lookup failed", exc_info=True)
+        return None
+    general = None
+    for key, value in facts:
+        k, v = str(key).lower(), str(value).lower()
+        if "browser" not in k:
+            continue
+        name = next((b for b in _BROWSERS if b in v), None)
+        if not name:
+            continue
+        if any(w in k for w in _MEDIA_WORDS):
+            return name
+        general = general or name
+    return general
+
+
+@skill("play_youtube", "Plays a song or video on YouTube. Use this whenever the user asks to play, put on, or listen "
+       "to any song/music/video. If they name a browser ('on Brave'), pass it as `browser`; without one, the browser "
+       "they asked you earlier to use for songs/YouTube is used automatically.",
+       {"query": {"type": "string", "description": "Song name, artist, or video to search and play."},
+        "browser": {"type": "string", "description": "Only if the user named a browser: brave, chrome, edge, firefox "
+                                                     "or opera."}}, ["query"])
 def _skill_play_youtube(brain, args: dict) -> str:
-    return WebManager.play_on_youtube(args.get("query", ""))
+    browser = (args.get("browser") or "").strip().lower() or preferred_media_browser()
+    return WebManager.play_on_youtube(args.get("query", ""), browser)
 
 
 # Tier 16: opens a Spotify search in the browser rather than a real Web API

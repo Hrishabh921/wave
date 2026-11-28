@@ -524,32 +524,57 @@ class WebManager:
             return "Failed to search Google."
 
     @classmethod
-    def play_on_youtube(cls, query: str) -> str:
-        """Opens the first YouTube search result for `query` in the
+    def play_on_youtube(cls, query: str, browser: str = None) -> str:
+        """Opens the first YouTube search result for `query` - in `browser`
+        ("brave", "chrome", ...) when one is given (Tier 57), else the
         default browser. Tries yt-dlp's search extractor first (see the
         module docstring for why); falls back to pywhatkit.playonyt() -
         the original implementation - when yt-dlp isn't installed, or if
         it raises or comes back with nothing. Never raises past here
         either way."""
         query = (query or "").strip()
+        browser = (browser or "").strip() or None
         if not query:
             return "What would you like me to play on YouTube?"
         if HAS_YTDLP:
             try:
                 video_url = cls._ytdlp_first_result(query)
                 if video_url:
-                    webbrowser.open(video_url)
-                    return f"Playing {query} on YouTube."
+                    return cls._open_video(video_url, browser, f"Playing {query} on YouTube")
                 logger.warning(f"yt-dlp found no results for {query!r}, falling back to pywhatkit.")
             except Exception as e:
                 logger.warning(f"yt-dlp search failed for {query!r}, falling back to pywhatkit: {e}")
         try:
+            if browser:
+                # pywhatkit opens only the default browser - ask it for the URL instead.
+                video_url = pywhatkit.playonyt(query, open_video=False)
+                if video_url:
+                    return cls._open_video(video_url, browser, f"Playing {query} on YouTube")
             # Ye function direct YouTube par pehla result dhundhega aur Play kar dega!
             pywhatkit.playonyt(query)
             return f"Playing {query} directly on YouTube."
         except Exception as e:
             logger.error(f"YouTube play failed: {e}")
             return "Failed to play on YouTube."
+
+    @staticmethod
+    def _open_video(url: str, browser: str, label: str) -> str:
+        """Tier 57: `url` in the named browser (through the platform
+        backend, like open_website), or the default one."""
+        if browser:
+            try:
+                from automation.backends import get_backend
+                backend = get_backend()
+                path = backend.find_browser(browser)
+                if path:
+                    backend.launch_in_browser(path, url)
+                    return f"{label} in {browser.title()}."
+            except Exception as e:
+                logger.warning(f"Couldn't open {browser} for {url}: {e}")
+            webbrowser.open(url)
+            return f"Couldn't find {browser} installed, so I'm {label[0].lower()}{label[1:]} in your default browser."
+        webbrowser.open(url)
+        return f"{label}."
 
     @staticmethod
     def _ytdlp_first_result(query: str) -> str:

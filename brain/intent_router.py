@@ -415,6 +415,77 @@ def _write_notepad(lower: str) -> RouteResult:
     return None
 
 
+# Tier 57: a song in the browser the user names, and the Hinglish way of
+# asking. "Play Jeene Laga Hoon on Brave." searched YouTube for "jeene laga
+# hoon on brave" in the DEFAULT browser; "jee ne laga hoon song play karo"
+# and "brave par kesariya chalao" never reached play_youtube at all, and
+# without a free model minute (Groq's 8k tokens a minute) they just failed.
+_MEDIA_BROWSER_END_RE = re.compile(r"\s+(?:on|in|using|with)\s+(brave|chrome|edge|firefox|opera)(?:\s+browser)?$")
+_MEDIA_BROWSER_HI_RE = re.compile(
+    r"(?:^|\s)(brave|chrome|edge|firefox|opera)(?:\s+browser)?\s+(?:par|pe|mein|me|में|पर)(?=\s|$)")
+_YOUTUBE_WORDS_RE = re.compile(r"(?:^|\s)(?:(?:on|in)\s+youtube|youtube(?:\s+(?:par|pe|mein|me|ke\s+andar|पर|में))?)"
+                               r"(?=\s|$)")
+_SONG_WORD_RE = re.compile(r"(?:^|\s)(?:the\s+|a\s+)?(?:song|gaana|gana|गाना)(?=\s|$)")
+# "pichla song lagao" is the previous track, not a song called "pichla" (found
+# by bench/heldout/); "koi/ek song lagao" names no song at all - the model
+# picks. ("play some jazz" does name one: a vague word alone is what's left out.)
+_TRACK_NAV_WORDS = frozenset("pichla pichhla picchla agla next previous last dusra doosra dusri doosri".split())
+_VAGUE_SONG_WORDS = frozenset("koi ek some any another".split())
+_PLAY_TAILS = (" play karo", " play kar do", " play kardo", " play krdo", " play kro", " play kijiye", " play kar")
+# these say "play" only about a song - "chalao" alone also runs apps and workflows
+_SONG_TAILS = (" chalao", " chala do", " bajao", " baja do", " sunao", " suna do", " lagao", " laga do")
+_play_prefix = _prefix_arg("play_youtube", "query", "play ")
+_MAX_SONG_WORDS = 7
+
+
+_POLITE_END_RE = re.compile(r"(?:[\s,]+(?:please|pls|plz|na|yaar|ji))+$")
+
+
+def _media_args(text: str, lead_in: bool, browser: Optional[str] = None) -> RouteResult:
+    """play_youtube's args from what's left of a play command: a named
+    browser, "youtube" and "song" come out of the song's name. `lead_in`: a
+    Hinglish sentence may open with a clause before a comma ("jo brave par
+    youtube search kiya hai na, us youtube ke andar X song play karo")."""
+    text = _POLITE_END_RE.sub("", text)
+    m = _MEDIA_BROWSER_END_RE.search(text)
+    if m:
+        browser, text = m.group(1), text[:m.start()]
+    m = _MEDIA_BROWSER_HI_RE.search(text)
+    if m:
+        browser = browser or m.group(1)
+        text = f"{text[:m.start()]} {text[m.end():]}"
+    if lead_in and "," in text:
+        text = text.rsplit(",", 1)[1]
+    text = re.sub(r"^\s*(?:us|is|usi|isi)\s+(?=youtube)", " ", text)
+    text = _YOUTUBE_WORDS_RE.sub(" ", text)
+    text = re.sub(r"^\s*(?:ke\s+andar|mein|me|par|pe)(?=\s)", " ", text)
+    query = " ".join(_SONG_WORD_RE.sub(" ", text).split()).strip(" ,.")
+    query = re.sub(r"^by\s+", "", query)                 # "play a song by arijit"
+    if (not query or len(query.split()) > _MAX_SONG_WORDS or query.split()[0] in _TRACK_NAV_WORDS
+            or query in _VAGUE_SONG_WORDS):
+        return None
+    return ("play_youtube", {"query": query, "browser": browser} if browser else {"query": query})
+
+
+def _play_youtube(lower: str) -> RouteResult:
+    if lower.startswith("play "):                        # "play X [on youtube] [on brave]"
+        text, browser = _POLITE_END_RE.sub("", lower), None
+        m = _MEDIA_BROWSER_END_RE.search(text)
+        if m:
+            browser, text = m.group(1), text[:m.start()]
+        # the old prefix rule's guards (idioms, length) judge the song's name, not the browser's
+        song = " ".join(_YOUTUBE_WORDS_RE.sub(" ", text[len("play "):]).split())
+        hit = _play_prefix(f"play {song}")
+        return _media_args(hit[1]["query"], lead_in=False, browser=browser) if hit is not None else None
+    for tail in _PLAY_TAILS + _SONG_TAILS:               # "X song play karo", "brave par X chalao"
+        if lower.endswith(tail):
+            head = lower[:-len(tail)]
+            if tail in _SONG_TAILS and not (_SONG_WORD_RE.search(head) or "youtube" in head):
+                return None
+            return _media_args(head, lead_in=True)
+    return None
+
+
 def _search_or_play(lower: str) -> RouteResult:
     """'search '/'search for ' is one prefix shared by two different
     skills, decided by what follows: a named browser needs
@@ -1098,7 +1169,7 @@ _RULES: List[_Rule] = [
     # suffix requirement at all - see _play_on_spotify's own docstring
     # above for exactly why this needs to run first.
     _Rule("play_on_spotify", _play_on_spotify),
-    _Rule("play_youtube", _prefix_arg("play_youtube", "query", "play ")),
+    _Rule("play_youtube", lambda lower: _play_youtube(lower)),
     # Tier 17: both before _search_or_play, whose own "search "/"search
     # for " prefixes have no suffix/topic requirement either - without
     # this order, "search my notes for X"/"search for file X" would

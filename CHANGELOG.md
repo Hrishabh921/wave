@@ -2,6 +2,21 @@
 
 This file tracks Wave's tier-by-tier build, not semantic-version releases - each entry is one roadmap tier, not a numbered version. Full detail for Tiers 10-22 lives in the matching "Shipped in Tier N" section of [`Readme.MD`](Readme.MD) and the matching "Status — shipped" block in [`docs/ROADMAP_BEAT_SARA.md`](docs/ROADMAP_BEAT_SARA.md); this file is a summary, not the source of truth.
 
+## Tier 57 — Songs in the browser you asked for, and requests that fit the free tier (2026-11-28)
+
+The owner, by voice: "Play Jeene Laga Hoon on Brave." - then told Wave "agar tumhe koi bhi song ... play karne ko bola jaaye to tum Brave par jaao, wahan YouTube search karo aur song play karo" - then "Jo Brave par YouTube search kiya hai na, us YouTube ke andar jee ne laga hoon song play karo." and got "That's taking longer than expected". The log showed why:
+- the fast path read "on brave" as part of the song's name and played it in the default browser; `play_youtube` had no way to pick a browser at all;
+- the model did save the wish ("preferred_browser_for_youtube: Brave", via remember_this) - and nothing that plays songs ever read it;
+- everything else went to the model, and Groq's free tier allows 8,000 tokens a minute per model: one request was ~3.3-3.8k tokens and a tool-using command is two, so nearly every call in that minute came back 429 (the planner's extra proposal call and a background conversation summary took their share too).
+
+Now:
+- **`play_youtube` takes a browser** (`web/web_ops.py`: the video URL from yt-dlp, or from pywhatkit without opening it, goes to the named browser through the platform backend, like `open_website`; a browser that isn't installed falls back to the default and says so). Without one, the browser the user asked for songs/YouTube is used - read from what the model remembered (a key with "browser" in it naming a browser; one about YouTube/songs/music beats a general one).
+- **The fast path understands play commands** with a browser and in Hinglish: "play X on/in Brave", "brave par X song play karo", "X song play karo", "X gaana bajao", "youtube par X chalao", a lead-in clause before a comma ("jo ... kiya hai na, us YouTube ke andar X song play karo"), politeness ("please", "na"). "chalao"/"bajao" alone need a song word or "youtube" - "workflow chalao" is not a song. Replayed through the brain, all four of the owner's play turns now play in Brave with no model request at all.
+- **Smaller requests.** The 14 RULES in the system prompt rode along on every request (~4.8k characters); a rule about one tool family (WhatsApp, workflows, calendar, notes, briefing, diagnostics, schedules, undo) now goes only with a request offering those tools - 5.7k → 3.9k characters of system prompt for a song request. And the wording pass after the tools ran (`tool_choice="none"`, also the empty-answer retry) sent the whole ~20-tool list again; it now sends only the tools the transcript already called - 16-17k → ~7k characters. A tool-using command went from ~35k to ~23k characters (about 35% fewer tokens): three such commands a minute fit where two did.
+- **Extra model calls wait while the budget is tight** (`WaveBrain.llm_budget_tight()`: a model rate-limited now or within 30 s): the planner's proposal and the rolling conversation summary are skipped then, so the user's own request gets the tokens.
+
+The held-out bench caught the new play rule taking "pichla song lagao" (the previous track) for a song called "pichla": navigation words (pichla/agla/next/previous) and a lone vague word ("koi/ek song lagao") name no song, while "play some jazz" still does. Golden set 100% in all three languages, held-out bench 0 wrong actions (its one known false trigger unchanged). 17 new tests in `tests/test_tier57_smarter_turns.py` (21 failures/errors without the change).
+
 ## Tier 56 — Hindi commands spelled the way Whisper writes them (2026-11-28)
 
 After Tier 55 Hindi (Devanagari) was still the weak spot: 15% of spoken Hindi commands reached the fast path, against 81% English. The router knows one spelling per Devanagari word ("आवाज़", "वॉल्यूम", "रीलोड"), and Whisper medium wrote the same words many ways on the benchmark clips - कोपी/कौपी for कॉपी, हूआ for हुआ, जूम for ज़ूम, शट्डाउन, रिलोड, हाईबर्नेट, रीसाइकल, कम्प्यूटर - and split some in two ("री लोड", "हाई बरनेट", "पूर ववत").

@@ -238,6 +238,78 @@ TOOL_RESULT_GUIDANCE = (
 )
 
 
+# The system prompt's RULES as (tools the rule is about, text) - () = always.
+# Tier 57: a rule about one tool family goes only with a request offering
+# that family. All 14 rode along on every request (~4.8k characters, ~1.2k
+# tokens) - and on Groq's free tier, 8,000 tokens a minute per model, a
+# tool-using command is two requests of ~3.3-3.8k tokens, so the next
+# command within a minute was rate-limited ("That's taking longer than
+# expected"). WaveBrain._rules_block numbers the ones that go.
+_RULES = (
+    ((), "Never hallucinate sending messages or taking actions unless explicitly shown in chat history."),
+    ((), "NEVER invent or fake system information. If you don't have the data, say you don't know. For anything "
+         "time-sensitive - latest, current, today's, prices, scores, news, who holds a post now - call "
+         "get_live_information first instead of answering from memory: what you learned in training is months old."),
+    ((), "Match your depth to the question: answer simple questions in a couple of sentences, but for anything "
+         "technical, multi-step, or open-ended, think it through properly and give a complete, well-reasoned "
+         "answer - don't sacrifice correctness or thoroughness just to be brief."),
+    ((), "When a command names a WEBSITE and/or a specific BROWSER together — e.g. 'search youtube on brave', "
+         "'open google in chrome', 'search amazon for shoes using edge' — always call open_website with every "
+         "piece the user gave you filled in at once (site, and query if they gave search terms, and browser if "
+         "they named one). Never drop the site to satisfy the browser or vice versa, and never call open_app for "
+         "this — open_app is only for launching a plain application/program by name, not a website. To PLAY a "
+         "song or video, call play_youtube (with browser if they named one) - it starts the video itself, "
+         "open_website only shows search results."),
+    ((), "Whenever you share code, commands, or config, always put it inside a fenced markdown code block with the "
+         "language name right after the opening ``` (e.g. ```python), so it renders with proper formatting and "
+         "syntax highlighting."),
+    (("send_whatsapp_message",),
+     "send_whatsapp_message already opens/focuses WhatsApp itself if needed - never call open_app for WhatsApp "
+     "first and wait. When one command bundles opening WhatsApp together with sending someone a message (e.g. "
+     "'whatsapp open karke Rohan ko hi bhejo', 'open whatsapp and message Rohan hi'), call send_whatsapp_message "
+     "directly in that same turn with both the contact and the message already filled in - don't split it into "
+     "two turns."),
+    ((), "If the user tells you something worth remembering for later (their name, a stated preference, a "
+         "recurring detail), call remember_this to actually save it - don't just acknowledge it in the reply and "
+         "lose it next session. The facts already remembered are listed above; use recall_memory only if you need "
+         "to check something not already listed."),
+    (("create_workflow", "run_workflow"),
+     "create_workflow saves a named sequence of commands so the user can replay all of them at once later with "
+     "run_workflow (e.g. a 'good morning' routine) - use it when they ask to save/create a routine, macro, or "
+     "workflow, not for a normal one-off request."),
+    (("set_reminder",),
+     "set_reminder covers both 'remind me to...' and 'set an alarm for...' - pass the time expression through to "
+     "the `when` argument exactly as the user said it (e.g. 'in 10 minutes', 'tomorrow at 5pm', '7am') rather "
+     "than converting it yourself; dateparser on the other end handles the actual parsing."),
+    (("undo_last_action", "list_recent_actions"),
+     "undo_last_action reverses the most recent file/folder/screenshot change you made. Call it ONLY when the "
+     "user explicitly asks to undo, revert or take back what you just did (e.g. 'undo that', 'wapas kar do') - "
+     "never on your own initiative. list_recent_actions answers 'what did you just do?'."),
+    (("create_calendar_event", "list_calendar_events", "cancel_calendar_event"),
+     "create_calendar_event/list_calendar_events/cancel_calendar_event manage actual scheduled events (meetings, "
+     "appointments, classes) - different from set_reminder, which is a one-off alarm/nudge with no duration or "
+     "location. Today's events are already listed above if there are any; only call list_calendar_events for a "
+     "day you don't already have listed."),
+    (("search_my_notes",),
+     "search_my_notes searches the user's own files (txt/md/PDF notes on their Desktop, Documents, Downloads, and "
+     "any configured notes folder) - call it whenever they ask you to check, search, or answer from 'my "
+     "notes'/'my files', instead of saying you can't access their files."),
+    (("daily_briefing",),
+     "daily_briefing combines weather + today's calendar + today's reminders into one summary - use it for 'good "
+     "morning'/'what's my day look like' style requests rather than calling three separate tools yourself."),
+    (("run_self_diagnostics",),
+     "run_self_diagnostics checks whether the LLM provider, database, disk, and voice stack are actually working "
+     "- use it for 'is everything okay'/'why isn't voice working' style requests."),
+    (("schedule_workflow",),
+     "schedule_workflow is for 'run my X workflow every morning at 7'/'run the backup workflow next Monday' - a "
+     "workflow that should fire on its OWN later, with no further request from the user. It's separate from "
+     "run_workflow (which runs one right now, on demand) and from set_reminder (which just tells the user "
+     "something, rather than running a saved sequence of commands) - don't try to pass a time into "
+     "run_workflow's own arguments, it doesn't take one. Pass when_text through exactly as the user said it, "
+     "same as set_reminder's `when`."),
+)
+
+
 class WaveBrain:
     def __init__(self):
         # Set first so the Ollama fallback is available even when the
@@ -362,7 +434,8 @@ class WaveBrain:
         summary = rolling_summary.summary_line()
         if summary:
             calendar_section += f"\nEARLIER IN THIS CONVERSATION (older messages, summarised):\n{summary}\n"
-        rolling_summary.schedule_update()
+        if not self.llm_budget_tight():       # Tier 57: not while the user's own request needs the tokens
+            rolling_summary.schedule_update()
         # Tier 41: the reply's language (this message's script) and the length
         # this user prefers (brain/style_profile.py).
         style = style_profile.style_lines(user_text)
@@ -380,63 +453,32 @@ class WaveBrain:
                 f"{memory_section}"
                 f"{calendar_section}"
                 f"{style_section}"
-                f"RULES:\n"
-                f"1. Never hallucinate sending messages or taking actions unless explicitly shown in chat history.\n"
-                f"2. NEVER invent or fake system information. If you don't have the data, say you don't know. "
-                f"For anything time-sensitive - latest, current, today's, prices, scores, news, who holds a "
-                f"post now - call get_live_information first instead of answering from memory: what you "
-                f"learned in training is months old.\n"
-                f"3. Match your depth to the question: answer simple questions in a couple of sentences, "
-                f"but for anything technical, multi-step, or open-ended, think it through properly and give "
-                f"a complete, well-reasoned answer - don't sacrifice correctness or thoroughness just to be brief.\n"
-                f"4. When a command names a WEBSITE and/or a specific BROWSER together — e.g. "
-                f"'search youtube on brave', 'open google in chrome', 'search amazon for shoes using edge' — "
-                f"always call open_website with every piece the user gave you filled in at once (site, and "
-                f"query if they gave search terms, and browser if they named one). Never drop the site to "
-                f"satisfy the browser or vice versa, and never call open_app for this — open_app is only for "
-                f"launching a plain application/program by name, not a website.\n"
-                f"5. Whenever you share code, commands, or config, always put it inside a fenced markdown "
-                f"code block with the language name right after the opening ``` (e.g. ```python), so it "
-                f"renders with proper formatting and syntax highlighting.\n"
-                f"6. send_whatsapp_message already opens/focuses WhatsApp itself if needed - never call "
-                f"open_app for WhatsApp first and wait. When one command bundles opening WhatsApp together "
-                f"with sending someone a message (e.g. 'whatsapp open karke Rohan ko hi bhejo', 'open "
-                f"whatsapp and message Rohan hi'), call send_whatsapp_message directly in that same turn "
-                f"with both the contact and the message already filled in - don't split it into two turns.\n"
-                f"7. If the user tells you something worth remembering for later (their name, a stated "
-                f"preference, a recurring detail), call remember_this to actually save it - don't just "
-                f"acknowledge it in the reply and lose it next session. The facts already remembered are "
-                f"listed above; use recall_memory only if you need to check something not already listed.\n"
-                f"8. create_workflow saves a named sequence of commands so the user can replay all of them "
-                f"at once later with run_workflow (e.g. a 'good morning' routine) - use it when they ask to "
-                f"save/create a routine, macro, or workflow, not for a normal one-off request.\n"
-                f"9. set_reminder covers both 'remind me to...' and 'set an alarm for...' - pass the time "
-                f"expression through to the `when` argument exactly as the user said it (e.g. 'in 10 "
-                f"minutes', 'tomorrow at 5pm', '7am') rather than converting it yourself; dateparser on the "
-                f"other end handles the actual parsing.\n"
-                f"10. undo_last_action reverses the most recent file/folder/screenshot change you made. Call it ONLY "
-                f"when the user explicitly asks to undo, revert or take back what you just did (e.g. 'undo that', "
-                f"'wapas kar do') - never on your own initiative. list_recent_actions answers 'what did you just do?'.\n"
-                f"11. create_calendar_event/list_calendar_events/cancel_calendar_event manage actual scheduled "
-                f"events (meetings, appointments, classes) - different from set_reminder, which is a one-off "
-                f"alarm/nudge with no duration or location. Today's events are already listed above if there are "
-                f"any; only call list_calendar_events for a day you don't already have listed.\n"
-                f"12. search_my_notes searches the user's own files (txt/md/PDF notes on their Desktop, Documents, "
-                f"Downloads, and any configured notes folder) - call it whenever they ask you to check, search, or "
-                f"answer from 'my notes'/'my files', instead of saying you can't access their files.\n"
-                f"13. daily_briefing combines weather + today's calendar + today's reminders into one summary - "
-                f"use it for 'good morning'/'what's my day look like' style requests rather than calling three "
-                f"separate tools yourself. run_self_diagnostics checks whether the LLM provider, database, disk, "
-                f"and voice stack are actually working - use it for 'is everything okay'/'why isn't voice "
-                f"working' style requests.\n"
-                f"14. schedule_workflow is for 'run my X workflow every morning at 7'/'run the backup workflow "
-                f"next Monday' - a workflow that should fire on its OWN later, with no further request from the "
-                f"user. It's separate from run_workflow (which runs one right now, on demand) and from "
-                f"set_reminder (which just tells the user something, rather than running a saved sequence of "
-                f"commands) - don't try to pass a time into run_workflow's own arguments, it doesn't take one. "
-                f"Pass when_text through exactly as the user said it, same as set_reminder's `when`."
+                f"{self._rules_block(user_text)}"
             )
         }
+
+    def _rules_block(self, user_text: str) -> str:
+        """Tier 57: the RULES - a rule about one tool family only goes with a
+        request that offers that family (brain/tool_select.py picks them from
+        the turn's words, as for the request itself)."""
+        try:
+            words = [{"role": "user", "content": user_text}]
+            prev = self._recent_history(limit=2)          # a follow-up ("haan bhej do") keeps its topic
+            words = [{"role": "user", "content": m} for r, m in prev if r == "user"][-1:] + words
+            offered = {t["function"]["name"] for t in self._tools_for(words)}
+        except Exception:
+            offered = None                                 # can't tell - send them all, as before
+        kept = [text for tools, text in _RULES if not tools or offered is None or offered & set(tools)]
+        return "RULES:\n" + "\n".join(f"{i}. {text}" for i, text in enumerate(kept, 1))
+
+    def llm_budget_tight(self, window_s: float = 30.0) -> bool:
+        """Tier 57: True while a model is rate-limited, or was within the last
+        `window_s` seconds. Extra model calls - the planner's proposal, the
+        rolling summary - then wait, so the user's own request gets the
+        minute's tokens (Groq's free tier: 8,000 a minute per model)."""
+        cooldown = getattr(self, "_model_cooldown", None) or {}
+        now = time.monotonic()
+        return any(until > now - window_s for until in cooldown.values())
 
     def _execute_single_action(self, cmd: str) -> str:
         # Phase 4: one audit row per matched command. When the command's backend
@@ -1137,7 +1179,8 @@ class WaveBrain:
         return tool_select.select_tool_specs(skills.tool_specs(), messages, always=user_skills)
 
     def _chat_completion(self, messages: list, *, tool_choice: str = "auto", temperature: float = 0.4,
-                         max_tokens: int = 1600, reasoning_effort: str = "high", timeout: float = None):
+                         max_tokens: int = 1600, reasoning_effort: str = "high", timeout: float = None,
+                         only_called_tools: bool = False):
         """Every Groq/OpenAI-compatible chat-completions call in the tool
         loop (think()) and its final wording pass (_compose_reply_from_tools)
         goes through here. Centralizes the 'some providers reject
@@ -1153,8 +1196,20 @@ class WaveBrain:
         drops it and relies on the client's own already-configured timeout
         (LLM_TIMEOUT) instead of failing the whole turn over an optional
         guardrail."""
-        kwargs = dict(messages=messages, model=self.model, tools=self._tools_for(messages),
+        if only_called_tools:
+            # Tier 57: the wording pass after the tools ran (tool_choice="none")
+            # sent the whole ~20-tool list again - ~10k characters, 60% of the
+            # request, for tools it may not use. Only the ones the transcript
+            # already calls go now (they keep its tool_calls valid).
+            called = set(tool_select.called_tools(messages))
+            tools = [s for s in skills.tool_specs() if s["function"]["name"] in called]
+        else:
+            tools = self._tools_for(messages)
+        kwargs = dict(messages=messages, model=self.model, tools=tools,
                       tool_choice=tool_choice, temperature=temperature, max_tokens=max_tokens)
+        if not tools:
+            kwargs.pop("tools")
+            kwargs.pop("tool_choice")
         if timeout is not None:
             kwargs["timeout"] = timeout
         return self._create_negotiated(kwargs, reasoning_effort)
@@ -1269,7 +1324,7 @@ class WaveBrain:
         try:
             timeout = max(8.0, governor.remaining_time()) if governor is not None else None
             response = self._chat_completion(messages, tool_choice="none", max_tokens=2400,
-                                             reasoning_effort="low", timeout=timeout)
+                                             reasoning_effort="low", timeout=timeout, only_called_tools=True)
             text = (response.choices[0].message.content or "").strip()
             logger.info(f"The model answered with nothing - asked again: {'got an answer' if text else 'still nothing'}.")
             return text
@@ -1786,7 +1841,7 @@ class WaveBrain:
             # being a second system message dropped in mid-conversation).
             followup[0] = {"role": "system", "content": messages[0]["content"] + TOOL_RESULT_GUIDANCE}
             resp = self._chat_completion(followup, tool_choice="none", temperature=0.3,
-                                         max_tokens=800, reasoning_effort="low")
+                                         max_tokens=800, reasoning_effort="low", only_called_tools=True)
             text = (resp.choices[0].message.content or "").strip()
             return text or raw
         except Exception as e:

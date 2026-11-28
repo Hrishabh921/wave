@@ -51,6 +51,14 @@ def try_plan_and_execute(brain, user_text: str) -> Optional[PlanOutcome]:
     try:
         if not trigger.should_attempt_planning(user_text):
             return None
+        # Tier 57: a proposal is one more full model request. While the
+        # model's per-minute budget is tight (a 429 within ~30 s) it would
+        # fail or starve the turn itself - the normal loop can call several
+        # tools on its own anyway.
+        tight = getattr(brain, "llm_budget_tight", None)
+        if callable(tight) and tight():
+            logger.info("planning: skipped - the model's per-minute budget is tight right now.")
+            return None
 
         plan = planner.propose_plan(brain, user_text)
         if plan is None or len(plan.steps) < 2:
