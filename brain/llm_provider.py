@@ -65,11 +65,12 @@ from settings.config import config  # noqa: F401  (guarantees load_dotenv() ran 
 
 logger = logging.getLogger("LLMProvider")
 
-PROVIDERS = ("groq", "openai", "openrouter", "ollama", "custom")
+PROVIDERS = ("groq", "openai", "openrouter", "gemini", "ollama", "custom")
 _ALIASES = {
     "local": "ollama",
     "openai-compatible": "custom", "openai_compatible": "custom",
     "generic": "custom", "lmstudio": "custom", "vllm": "custom",
+    "google": "gemini",
 }
 
 # Defaults. Groq's are the exact values Wave hard-coded before Phase 4.
@@ -83,9 +84,18 @@ _PRESETS: Dict[str, Dict[str, Any]] = {
     "openrouter": dict(base_url="https://openrouter.ai/api/v1", key_vars=("OPENROUTER_API_KEY",),
                        model="openai/gpt-oss-120b", vision_model=None, needs_key=True,
                        headers={"X-Title": "Wave AI"}),
+    # Tier 58: Google's OpenAI-compatible endpoint (chat completions with
+    # tools, streaming) - a key from Google AI Studio. Model ids change often:
+    # if this one is gone, WaveBrain picks the newest Flash the key can use.
+    "gemini": dict(base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+                   key_vars=("GEMINI_API_KEY", "GOOGLE_API_KEY"), model="gemini-3.8-flash", vision_model=None,
+                   needs_key=True),
     "ollama": dict(base_url=None, key_vars=(), model=None, vision_model=None, needs_key=False),
     "custom": dict(base_url=None, key_vars=(), model=None, vision_model=None, needs_key=False),
 }
+# Tier 58: who may stand in when every model of the main provider is
+# rate-limited, in the order "auto" tries them (a key must be in .env).
+BACKUP_PROVIDERS = ("gemini", "openrouter", "openai", "groq")
 
 _PLACEHOLDER_RE = re.compile(r"^\s*(your[_\- ].*|<.*>|xxx+|changeme|none|null)\s*$", re.IGNORECASE)
 _TRUTHY_OFF = ("false", "0", "no", "off")
@@ -251,6 +261,64 @@ def resolve_provider(env: Optional[Mapping[str, str]] = None, groq_sdk_available
                 groq_sdk_available = False
         cfg.use_sdk = bool(groq_sdk_available)
     return cfg
+
+
+def resolve_backup_provider(env: Optional[Mapping[str, str]] = None) -> Optional[ProviderConfig]:
+    """Tier 58: the provider a request moves to when every model of the main
+    one is rate-limited (Groq's free tier: 8,000 tokens a minute per model)
+    or the main one is down. LLM_BACKUP_PROVIDER: "auto" (default - the
+    first of BACKUP_PROVIDERS, other than the main one, whose key is in
+    .env: GEMINI_API_KEY first), "off", or a provider name; LLM_BACKUP_MODEL
+    picks its model. The main provider's LLM_* settings (LLM_API_KEY,
+    LLM_MODEL, ...) never leak into the backup. None when there's no usable
+    backup. Pure and never raises."""
+    env = os.environ if env is None else env
+    want = _clean(env.get("LLM_BACKUP_PROVIDER")).lower() or "auto"
+    want = _ALIASES.get(want, want)
+    if want in _TRUTHY_OFF or want == "none":
+        return None
+    main = _ALIASES.get(_clean(env.get("LLM_PROVIDER")).lower(), _clean(env.get("LLM_PROVIDER")).lower()) or "groq"
+    if want == "auto":
+        want = next((p for p in BACKUP_PROVIDERS if p != main
+                     and any(_usable_key(env.get(v, "")) for v in _PRESETS[p]["key_vars"])), "")
+        if not want:
+            return None
+    if want not in BACKUP_PROVIDERS:
+        logger.warning(f"LLM_BACKUP_PROVIDER={want!r} can't be a backup (use one of {', '.join(BACKUP_PROVIDERS)}).")
+        return None
+    own = {k: v for k, v in env.items() if not k.startswith("LLM_")}
+    own["LLM_PROVIDER"] = want
+    if _clean(env.get("LLM_BACKUP_MODEL")):
+        own["LLM_MODEL"] = _clean(env.get("LLM_BACKUP_MODEL"))
+    cfg = resolve_provider(own, groq_sdk_available=False)
+    if not cfg.configured:
+        logger.info(f"Backup LLM {want} not used: {cfg.problem}")
+        return None
+    # A stand-in must answer quickly or step aside: checked live, Gemini's
+    # newest Flash answered "high demand" (503) for minutes, and the client's
+    # usual retries with backoff turned one word into a 67 s wait.
+    cfg.timeout = _env_float(env, "LLM_BACKUP_TIMEOUT", 12.0, 3.0, 120.0)
+    cfg.max_retries = int(_env_float(env, "LLM_BACKUP_MAX_RETRIES", 0, 0, 3))
+    return cfg
+
+
+def best_flash_model(model_ids, lite: bool = False) -> Optional[str]:
+    """Tier 58: the newest plain Gemini Flash among `model_ids` (as the API
+    lists them, "models/gemini-3.8-flash" or bare) - not an image/audio/
+    embedding/preview variant; a Flash-Lite only when there's no Flash.
+    lite=True: the newest Flash-Lite instead (None if there's none)."""
+    names = [str(i).split("/", 1)[1] if str(i).startswith("models/") else str(i) for i in model_ids or ()]
+
+    def version(name):
+        m = re.match(r"gemini-(\d+(?:\.\d+)?)", name)
+        return float(m.group(1)) if m else 0.0
+    special = ("image", "tts", "audio", "live", "embedding", "vision", "exp", "preview", "thinking")
+    flash = [n for n in names if n.startswith("gemini-") and "flash" in n and not any(s in n for s in special)]
+    if lite:
+        pool = [n for n in flash if n.endswith("flash-lite")]
+    else:
+        pool = [n for n in flash if "lite" not in n] or flash
+    return max(pool, key=version) if pool else None
 
 
 # =============================================================================
@@ -722,6 +790,18 @@ class OpenAICompatClient:
                     time.sleep(delay)
                     continue
                 raise
+
+    def model_ids(self) -> List[str]:
+        """Tier 58: the model ids GET /models lists ([] when it can't be read)."""
+        try:
+            resp = self._session().get(f"{self.cfg.base_url}/models", headers=self._headers(),
+                                       timeout=(_CONNECT_TIMEOUT, min(self.cfg.timeout, 15)))
+            if resp.status_code != 200:
+                return []
+            data = resp.json().get("data") or []
+            return [str(d["id"]) for d in data if isinstance(d, dict) and d.get("id")]
+        except Exception:
+            return []
 
     # ---------------- health check ----------------
     def ping(self) -> Tuple[bool, str, int]:

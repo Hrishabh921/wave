@@ -159,6 +159,15 @@ def _is_transient(e) -> bool:
     return "connection" in name and "timeout" not in name
 
 
+def _model_missing(e) -> bool:
+    """Tier 58: the provider doesn't have (or no longer has) the model asked for."""
+    if _status_of(e) == 404:
+        return True
+    text = str(e).lower()
+    return "model" in text and any(w in text for w in ("not found", "not_found", "does not exist", "unknown model",
+                                                       "is not supported", "no longer available"))
+
+
 def _retry_after_s(e, default: float = 20.0) -> float:
     """How long the provider asked us to stay away, clamped to 1..120 s."""
     value = getattr(e, "retry_after", None)
@@ -346,6 +355,12 @@ class WaveBrain:
         # and when local Ollama was last found not running.
         self._model_cooldown = {}
         self._ollama_down_until = 0.0
+        # Tier 58: a second provider (Gemini when GEMINI_API_KEY is in .env)
+        # for when every model of the main one is rate-limited or it's down.
+        self.backup_provider = llm_provider.resolve_backup_provider()
+        self.backup_client = llm_provider.build_client(self.backup_provider) if self.backup_provider else None
+        if self.backup_client is not None:
+            logger.info(f"Backup LLM ready: {self.backup_provider.name} ({self.backup_provider.model}).")
         # Tier 34: which model tier (brain/model_router.py) the turn on this
         # thread was routed to, and the model that last answered on it.
         self._route_tls = threading.local()
@@ -1410,7 +1425,16 @@ class WaveBrain:
                             logger.warning(f"{model} failed ({type(e).__name__}: {str(e)[:120]}) - "
                                            f"answering with {models[i + 1]}.")
                             break
+                        if _is_transient(e):                    # Tier 58: the provider is down
+                            response = self._try_backup(kwargs, e)
+                            if response is not None:
+                                return response
                         raise
+            # Tier 58: every model is rate-limited - the backup provider
+            # answers right away, rather than the user waiting or hearing "busy".
+            response = self._try_backup(kwargs, limited)
+            if response is not None:
+                return response
             # Every model is rate-limited. If one frees up within a few
             # seconds, wait for it once rather than giving up on the turn.
             now = time.monotonic()
@@ -1420,6 +1444,75 @@ class WaveBrain:
             logger.info(f"All models rate-limited - waiting {soonest:.1f}s for the first to free up")
             time.sleep(max(0.0, soonest) + 0.3)
             waited = True
+
+    _BACKUP_REST_S = 60.0          # an overloaded/slow backup model sits out this long
+    _BACKUP_SECOND_TRY_S = 5.0     # a second backup model only if the first failed this fast
+
+    def _try_backup(self, kwargs: dict, cause):
+        """Tier 58: the same request (tools, streaming and all) to the backup
+        provider - or None when there isn't one, or it's rate-limited or
+        failing too (the caller then waits or says "busy", as before).
+
+        Checked live with Gemini: its newest Flash said "This model is
+        currently experiencing high demand" (503) or timed out for minutes
+        while the lighter Flash-Lite still answered in ~1 s - so each backup
+        model rests on its own after a failure, Gemini's newest Flash-Lite
+        stands behind the configured model, and a second model is tried in
+        the same turn only when the first failed fast (a voice turn can't
+        wait out two timeouts). A model id the provider no longer has is
+        swapped for the newest Flash it lists (Gemini renames models often)."""
+        client = getattr(self, "backup_client", None)
+        cfg = getattr(self, "backup_provider", None)
+        if client is None or cfg is None:
+            return None
+        main = getattr(getattr(self, "provider", None), "name", "the main provider")
+        why = "rate-limited" if _is_rate_limited(cause) else f"failing ({type(cause).__name__})"
+        started = time.monotonic()
+        tried: set = set()
+        while True:
+            now = time.monotonic()
+            model = next((m for m in self._backup_models(cfg, client)
+                          if m not in tried and self._model_cooldown.get(f"backup:{cfg.name}:{m}", 0) <= now), None)
+            if model is None or (tried and now - started > self._BACKUP_SECOND_TRY_S):
+                return None
+            tried.add(model)
+            rest_key = f"backup:{cfg.name}:{model}"
+            try:
+                response = client.chat.completions.create(**dict(kwargs, model=model))
+            except Exception as e:
+                if _is_rate_limited(e):
+                    self._model_cooldown[rest_key] = time.monotonic() + _retry_after_s(e)
+                elif _is_transient(e) or getattr(e, "kind", "") == "timeout" or "timeout" in type(e).__name__.lower():
+                    # overloaded or too slow: let it rest, or every turn of a busy minute waits on it again
+                    self._model_cooldown[rest_key] = time.monotonic() + self._BACKUP_REST_S
+                elif model == cfg.model and _model_missing(e) and cfg.name == "gemini":
+                    ids = client.model_ids() if hasattr(client, "model_ids") else []
+                    alt = llm_provider.best_flash_model(ids)
+                    if alt and alt not in tried:
+                        logger.info(f"Backup model {model} isn't available - using {alt}.")
+                        cfg.model = alt
+                logger.warning(f"The backup ({cfg.name}, {model}) couldn't answer: {type(e).__name__}: {str(e)[:160]}")
+                continue
+            logger.warning(f"{main} is {why} - answered with the backup, {cfg.name} ({model}).")
+            tls = getattr(self, "_route_tls", None)
+            if tls is not None:
+                tls.used_model = f"{cfg.name}:{model}"
+            return response
+
+    def _backup_models(self, cfg, client) -> list:
+        """The backup's models, best first: the configured one, then for
+        Gemini the newest Flash-Lite its key lists (looked up once)."""
+        models = [cfg.model]
+        if cfg.name == "gemini":
+            lite = getattr(self, "_backup_lite", None)
+            if lite is None:
+                ids = client.model_ids() if hasattr(client, "model_ids") else []
+                lite = llm_provider.best_flash_model(ids, lite=True) or ""
+                if ids:                                   # an unreadable list is asked again next time
+                    self._backup_lite = lite
+            if lite and lite not in models:
+                models.append(lite)
+        return models
 
     def _create_negotiated(self, kwargs: dict, reasoning_effort: str):
         """_llm_create() plus the old parameter negotiation: a client that

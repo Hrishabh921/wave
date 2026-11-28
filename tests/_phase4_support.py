@@ -105,6 +105,11 @@ for _flag in ("MEMORY_PEOPLE_GRAPH", "MEMORY_EPISODIC", "MEMORY_DECAY", "WEB_GRO
     os.environ.setdefault(_flag, "false")
     if "settings.config" in sys.modules:
         setattr(sys.modules["settings.config"].config, _flag, False)
+# Tier 58: nor send a request to the developer's backup provider (Gemini,
+# when GEMINI_API_KEY is in their .env) - forced, since a WaveBrain reads it
+# from the environment when it's built. tests/test_tier58_backup_provider.py
+# gives its brains fake backup clients.
+os.environ["LLM_BACKUP_PROVIDER"] = "off"
 # Tier 55: nor try the developer's GPU - their .env may say
 # FASTER_WHISPER_DEVICE=auto. tests/test_tier55_stt_gpu.py sets it itself.
 os.environ.setdefault("FASTER_WHISPER_DEVICE", "cpu")
